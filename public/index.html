@@ -7,7 +7,7 @@
   <style>
     body {
       margin: 0;
-      background: #0E0E23;
+      background: #0d0f23;
       font-family: Arial, sans-serif;
       overflow: hidden;
     }
@@ -26,38 +26,84 @@
       color: white;
       font-weight: bold;
       text-align: center;
+      text-shadow: 0 0 4px rgba(0, 0, 0, 0.6);
+      pointer-events: none;
+      user-select: none;
     }
   </style>
 </head>
 <body>
   <div id="bubble-container"></div>
   <script>
-    function randomColor() {
-      const hue = Math.floor(Math.random() * 360);
-      return `hsl(${hue}, 70%, 50%)`;
+    const container = document.getElementById('bubble-container');
+    const bubbles = [];
+    const numBubbles = 30;
+    function randomHue() {
+      return Math.floor(Math.random() * 360);
     }
-    function createBubbles() {
-      const container = document.getElementById('bubble-container');
-      const num = 30;
+    function createBubble() {
+      const size = Math.random() * 120 + 50;
+      const x = Math.random() * (window.innerWidth - size);
+      const y = Math.random() * (window.innerHeight - size);
+      const vx = (Math.random() - 0.5) * 2;
+      const vy = (Math.random() - 0.5) * 2;
+      const value = (Math.random() * 100).toFixed(2);
+      const hue = randomHue();
+      const div = document.createElement('div');
+      div.className = 'bubble';
+      div.style.width = size + 'px';
+      div.style.height = size + 'px';
+      div.style.background = 'radial-gradient(circle at 30% 30%, hsla(' + hue + ', 90%, 70%, 0.8), hsla(' + hue + ', 90%, 50%, 0.6) 70%, transparent)';
+      div.textContent = value;
+      container.appendChild(div);
+      return { el: div, x: x, y: y, vx: vx, vy: vy, size: size };
+    }
+    for (let i = 0; i < numBubbles; i++) {
+      bubbles.push(createBubble());
+    }
+    let mouse = { x: null, y: null };
+    container.addEventListener('mousemove', function(e) {
+      const rect = container.getBoundingClientRect();
+      mouse.x = e.clientX - rect.left;
+      mouse.y = e.clientY - rect.top;
+    });
+    container.addEventListener('mouseleave', function() {
+      mouse.x = null;
+      mouse.y = null;
+    });
+    function animate() {
       const width = window.innerWidth;
       const height = window.innerHeight;
-      for (let i = 0; i < num; i++) {
-        const size = Math.random() * 120 + 50; // 50-170 px
-        const x = Math.random() * (width - size);
-        const y = Math.random() * (height - size);
-        const div = document.createElement('div');
-        div.className = 'bubble';
-        div.style.width = size + 'px';
-        div.style.height = size + 'px';
-        div.style.background = randomColor();
-        div.style.left = x + 'px';
-        div.style.top = y + 'px';
-        const value = Math.random() * 100;
-        div.textContent = value.toFixed(2);
-        container.appendChild(div);
-      }
+      bubbles.forEach(function(bubble) {
+        bubble.x += bubble.vx;
+        bubble.y += bubble.vy;
+        if (bubble.x <= 0 || bubble.x + bubble.size >= width) {
+          bubble.vx *= -1;
+          bubble.x = Math.max(0, Math.min(bubble.x, width - bubble.size));
+        }
+        if (bubble.y <= 0 || bubble.y + bubble.size >= height) {
+          bubble.vy *= -1;
+          bubble.y = Math.max(0, Math.min(bubble.y, height - bubble.size));
+        }
+        bubble.vx *= 0.99;
+        bubble.vy *= 0.99;
+        if (mouse.x !== null && mouse.y !== null) {
+          const dx = bubble.x + bubble.size / 2 - mouse.x;
+          const dy = bubble.y + bubble.size / 2 - mouse.y;
+          const distSq = dx * dx + dy * dy;
+          const radius = bubble.size * 1.2;
+          if (distSq < radius * radius) {
+            const dist = Math.sqrt(distSq) || 1;
+            const force = 0.4;
+            bubble.vx += (dx / dist) * force;
+            bubble.vy += (dy / dist) * force;
+          }
+        }
+        bubble.el.style.transform = 'translate(' + bubble.x + 'px, ' + bubble.y + 'px)';
+      });
+      requestAnimationFrame(animate);
     }
-    window.onload = createBubbles;
+    animate();
   </script>
 </body>
 </html>
