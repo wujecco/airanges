@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Buble One</title>
+  <style>
+    body {
+      margin: 0;
+      background: #0E0E23;
+      font-family: Arial, sans-serif;
+      overflow: hidden;
+    }
+    #bubble-container {
+      position: relative;
+      width: 100vw;
+      height: 100vh;
+      overflow: hidden;
+    }
+    .bubble {
+      position: absolute;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: white;
+      font-weight: bold;
+      text-align: center;
+    }
+  </style>
+</head>
+<body>
+  <div id="bubble-container"></div>
+  <script>
+    function randomColor() {
+      const hue = Math.floor(Math.random() * 360);
+      return `hsl(${hue}, 70%, 50%)`;
+    }
+    function createBubbles() {
+      const container = document.getElementById('bubble-container');
+      const num = 30;
+      const width = window.innerWidth;
+      const height = window.innerHeight;
+      for (let i = 0; i < num; i++) {
+        const size = Math.random() * 120 + 50; // 50-170 px
+        const x = Math.random() * (width - size);
+        const y = Math.random() * (height - size);
+        const div = document.createElement('div');
+        div.className = 'bubble';
+        div.style.width = size + 'px';
+        div.style.height = size + 'px';
+        div.style.background = randomColor();
+        div.style.left = x + 'px';
+        div.style.top = y + 'px';
+        const value = Math.random() * 100;
+        div.textContent = value.toFixed(2);
+        container.appendChild(div);
+      }
+    }
+    window.onload = createBubbles;
+  </script>
+</body>
+</html>
