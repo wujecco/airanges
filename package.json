@@ -1,0 +1,12 @@
+{
+  "name": "buble-one",
+  "version": "1.0.0",
+  "description": "Web service replicating cryptobubbles style with random values",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2"
+  }
+}
