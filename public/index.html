@@ -151,26 +151,18 @@
             // back to a default size.
             changePercent = stock.changePercent || 0;
             const absChange = Math.abs(changePercent);
-            // Define the minimum and maximum bubble sizes. To make
-            // differences in daily percentage changes more visually
-            // significant, widen the range and apply an exponent to the
-            // ratio. A larger exponent (> 1) exaggerates differences
-            // between large and small movers so that the biggest
-            // percentage change produces a much bigger bubble.
-            const minSize = 50;
-            const maxSize = 250;
-            const range = maxSize - minSize;
-            let ratio = 0;
-            if (maxAbsChange > 0) {
-              ratio = absChange / maxAbsChange;
-            }
-            // Apply an exponent to emphasise differences. Raising the
-            // ratio to the power of 1.5 means that small changes shrink
-            // relatively more while large changes grow more. Values must
-            // stay within [0,1].
-            const exponent = 1.5;
-            const ratioExp = Math.pow(ratio, exponent);
-            size = minSize + range * ratioExp;
+            // Define the minimum and maximum bubble sizes. To produce
+            // more pronounced differences between movers, size will be
+            // proportional to the magnitude of the daily percentage change
+            // rather than scaled relative to the maximum. We choose a
+            // multiplier so that a 1 % move increases the bubble by ~15
+            // pixels. The size is clamped so extremely large moves don’t
+            // make the bubble excessive.
+            const minSize = 40;
+            const multiplier = 15;
+            const maxSize = 350;
+            size = minSize + multiplier * absChange;
+            if (size > maxSize) size = maxSize;
             // Format the percentage with a sign and two decimals.
             const pctStr =
               (changePercent > 0 ? '+' : changePercent < 0 ? '' : '') +
