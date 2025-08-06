@@ -24,58 +24,94 @@ app.use(express.static(path.join(__dirname, 'public')));
 /**
  * GET /api/sp500
  *
- * Fetches the top 100 constituents of the S&P 500 index and their
- * realtime prices. Returns a JSON array of objects with `ticker` and
- * `price` fields. If the API key is missing or an error occurs,
- * responds with an appropriate status and message.
+ * Responds with a JSON array of objects containing the ticker symbols
+ * and latest prices for roughly the top 100 companies in the S&P 500.
+ *
+ * Instead of relying on Intrinio’s `indices` endpoint—which is only
+ * available with certain data packages—this route scrapes a public
+ * webpage (https://www.slickcharts.com/sp500) to obtain the list of
+ * companies in descending order by index weight. Only the first 100
+ * tickers are used. It then queries Intrinio’s realtime price API for
+ * each ticker using a 15‑minute delayed source (`delayed_sip`) to avoid
+ * exchange fees and leverage the available data packages. Prices are
+ * returned as numbers or null if unavailable.
+ *
+ * The Intrinio API key is read from `INTRINIO_API_KEY` in the
+ * environment. If it is not present, the server returns a 500
+ * response. All network errors are caught and reported with a 500
+ * response.
  */
 app.get('/api/sp500', async (req, res) => {
   const apiKey = process.env.INTRINIO_API_KEY;
   if (!apiKey) {
     return res.status(500).json({ error: 'INTRINIO_API_KEY is not configured on the server.' });
   }
-  try {
-    // Identifier for the S&P 500 index in Intrinio. According to Intrinio
-    // documentation and examples, the S&P 500 is referenced by the symbol
-    // "SPX". See the Index Constituents endpoint description【22675122430142†L690-L702】.
-    const indexIdentifier = 'SPX';
-    // Build the URL to fetch constituents. Page size limits the number of
-    // records returned per page; set to 100 to retrieve the top 100.
-    const constituentsUrl = `https://api-v2.intrinio.com/indices/${indexIdentifier}/constituents?page_size=100&api_key=${apiKey}`;
-    const constResp = await fetch(constituentsUrl);
-    if (!constResp.ok) {
-      const text = await constResp.text();
-      return res.status(constResp.status).json({ error: `Failed to fetch constituents: ${text}` });
+
+  /**
+   * Fetch the HTML for the S&P 500 components page and extract up to 100
+   * ticker symbols. The page lists companies in order of index weight.
+   * Each ticker appears in a link with a `/symbol/{TICKER}` href, so
+   * a simple regex can be used to capture them. Duplicates are
+   * filtered to ensure each ticker appears once.
+   *
+   * @returns {Promise<string[]>} A promise resolving to an array of tickers
+   */
+  async function getTopTickers() {
+    const url = 'https://www.slickcharts.com/sp500';
+    const response = await fetch(url);
+    if (!response.ok) {
+      throw new Error(`Failed to fetch tickers from ${url}: ${response.statusText}`);
     }
-    const constituentsData = await constResp.json();
-    // Extract ticker symbols from the constituents list. If the list is
-    // shorter than 100, take whatever is available. The API returns an
-    // array under the `constituents` property【22675122430142†L726-L739】.
-    const tickers = (constituentsData.constituents || [])
-      .map(sec => sec.ticker)
-      .filter(Boolean)
-      .slice(0, 100);
-    // For each ticker, fetch the realtime price. Intrinio’s realtime
-    // price endpoint returns a rich object; we only need the last_price
-    // field【892643411456809†L696-L734】. Use Promise.all to run requests in
-    // parallel.
+    const html = await response.text();
+    // Match all instances of /symbol/XYZ where XYZ contains letters or a
+    // period (e.g. "BRK.B"). This regex returns the ticker in the first
+    // capture group. Because the page contains the tickers twice (once
+    // in the company row and once in a dropdown), we filter out
+    // duplicates later.
+    const regex = /\/symbol\/([A-Za-z\.]+)"/g;
+    const tickers = [];
+    let match;
+    const seen = new Set();
+    while ((match = regex.exec(html)) !== null && tickers.length < 100) {
+      const ticker = match[1];
+      if (!seen.has(ticker)) {
+        seen.add(ticker);
+        tickers.push(ticker);
+      }
+    }
+    return tickers;
+  }
+
+  try {
+    const tickers = await getTopTickers();
+    // Fetch the delayed realtime price for each ticker. Using
+    // `source=delayed_sip` provides 15‑minute delayed SIP data which is
+    // generally accessible under Intrinio’s US stock price packages.
     const pricePromises = tickers.map(async (ticker) => {
-      const priceUrl = `https://api-v2.intrinio.com/securities/${ticker}/prices/realtime?api_key=${apiKey}`;
-      const priceResp = await fetch(priceUrl);
-      if (!priceResp.ok) {
+      const priceUrl = `https://api-v2.intrinio.com/securities/${ticker}/prices/realtime?source=delayed_sip&api_key=${apiKey}`;
+      try {
+        const priceResp = await fetch(priceUrl);
+        if (!priceResp.ok) {
+          return { ticker, price: null };
+        }
+        const priceData = await priceResp.json();
+        // Choose the most relevant price field: normal_market_hours_last_price,
+        // last_price, or eod_close_price. If none exist, set null.
+        const price = priceData.normal_market_hours_last_price ??
+                      priceData.last_price ??
+                      priceData.eod_close_price ??
+                      null;
+        return { ticker, price };
+      } catch (err) {
+        // On network or parsing errors, return null for price.
         return { ticker, price: null };
       }
-      const priceData = await priceResp.json();
-      // Use normal_market_hours_last_price if present; otherwise fall back
-      // to last_price. If neither is available, leave null.
-      const price = priceData.normal_market_hours_last_price || priceData.last_price || null;
-      return { ticker, price };
     });
     const prices = await Promise.all(pricePromises);
     res.json(prices);
   } catch (err) {
     console.error(err);
-    res.status(500).json({ error: 'Unexpected error fetching SP500 data' });
+    res.status(500).json({ error: err.message || 'Unexpected error fetching SP500 data' });
   }
 });
 
