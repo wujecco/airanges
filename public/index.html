@@ -128,96 +128,158 @@
      */
     function createBubble(stock) {
       /*
-       * Create a bubble DOM element and state object. When stock data
-       * is provided, the bubble's size and colour are derived from
-       * the percentage change relative to the previous close. A larger
-       * absolute change produces a larger bubble. Positive changes are
-       * coloured green; negative changes red. The label shows the
-       * ticker on the first line and the change percentage on the
-       * second line. When no stock data is available, fall back to
-       * random sizing and a random label and colour.
+       * Create a bubble DOM element and corresponding state. Each bubble
+       * contains three separate pieces of information: an optional icon,
+       * the ticker symbol and the percentage change. These pieces are
+       * individually sized based on the overall diameter of the bubble.
+       * When stock data is provided, the diameter is scaled relative
+       * to the largest absolute percentage change among all stocks
+       * (maxAbsChange). This ensures the largest movers occupy the
+       * largest space on screen, with visibly smaller bubbles for
+       * subtler moves. Positive values are styled green, negative
+       * values red. When no stock data is available (fallback mode),
+       * random sizes and colours are used.
        */
       let size;
-      let label;
-      let gradient;
       let changePercent = 0;
-          if (stock && stock.ticker) {
-            // Derive bubble size based on the absolute percent change. Compute
-            // a size between a minimum and maximum using the ratio of this
-            // stock's change to the largest change across the dataset. This
-            // ensures the largest mover is clearly the largest bubble and
-            // smaller moves scale down proportionally. If maxAbsChange is
-            // zero (unlikely, but possible if all changes are zero), fall
-            // back to a default size.
-            changePercent = stock.changePercent || 0;
-            const absChange = Math.abs(changePercent);
-            // Define the minimum and maximum bubble sizes. To produce
-            // more pronounced differences between movers, size will be
-            // proportional to the magnitude of the daily percentage change
-            // rather than scaled relative to the maximum. We choose a
-            // multiplier so that a 1 % move increases the bubble by ~15
-            // pixels. The size is clamped so extremely large moves don’t
-            // make the bubble excessive.
-            const minSize = 40;
-            const multiplier = 15;
-            const maxSize = 350;
-            size = minSize + multiplier * absChange;
-            if (size > maxSize) size = maxSize;
-            // Format the percentage with a sign and two decimals.
-            const pctStr =
-              (changePercent > 0 ? '+' : changePercent < 0 ? '' : '') +
-              (changePercent !== null && !isNaN(changePercent)
-                ? changePercent.toFixed(2) + '%'
-                : '0.00%');
-            label = `${stock.ticker}\n${pctStr}`;
-            // Define colours based on sign: green for positive, red for negative.
-            if (changePercent >= 0) {
-              // Greens: lighten and darken to create depth.
-              gradient =
-                'radial-gradient(circle at 30% 30%, hsla(120, 80%, 65%, 0.85), hsla(120, 80%, 40%, 0.65) 70%, transparent)';
-            } else {
-              gradient =
-                'radial-gradient(circle at 30% 30%, hsla(0, 80%, 65%, 0.85), hsla(0, 80%, 40%, 0.65) 70%, transparent)';
-            }
-          } else {
-        // Random bubble fallback
-        size = Math.random() * 120 + 50;
-        label = (Math.random() * 100).toFixed(2);
+      let gradient;
+      let borderColor;
+      // Create DOM nodes for the icon, ticker and percentage. In fallback
+      // mode only one line of text is used.
+      let iconSpan = null;
+      let tickerSpan = null;
+      let pctSpan = null;
+      if (stock && stock.ticker) {
+        changePercent = stock.changePercent || 0;
+        const absChange = Math.abs(changePercent);
+        // Determine diameter using the global maxAbsChange. We use a
+        // minimum and maximum to clamp extreme values. The ratio ensures
+        // a meaningful difference between small and large movers.
+        const minSize = 60;
+        const maxSize = 380;
+        const ratio = maxAbsChange > 0 ? absChange / maxAbsChange : 0;
+        size = minSize + (maxSize - minSize) * ratio;
+        // Format percentage string with sign and one decimal place.
+        const pctStr =
+          (changePercent > 0 ? '+' : changePercent < 0 ? '' : '') +
+          (isFinite(changePercent) ? changePercent.toFixed(1) + '%' : '0.0%');
+        // Choose colours based on sign. Use a radial gradient for
+        // interior shading and set a solid border colour for the neon ring.
+        if (changePercent >= 0) {
+          gradient =
+            'radial-gradient(circle at 40% 40%, hsla(130, 60%, 60%, 0.9) 0%, hsla(130, 60%, 30%, 0.7) 70%, hsla(130, 60%, 20%, 0.0) 90%)';
+          borderColor = 'hsl(130, 80%, 55%)';
+        } else {
+          gradient =
+            'radial-gradient(circle at 40% 40%, hsla(0, 70%, 60%, 0.9) 0%, hsla(0, 70%, 30%, 0.7) 70%, hsla(0, 70%, 20%, 0.0) 90%)';
+          borderColor = 'hsl(0, 80%, 55%)';
+        }
+        // Create the icon span. We use the first letter of the ticker
+        // capitalised. This sits at the top of the bubble. Its size is
+        // relative to the diameter of the bubble. A small circular
+        // background behind the letter enhances readability and echoes
+        // the reference design, which uses company logos. Note: you can
+        // replace this with actual icons if available via an API.
+        iconSpan = document.createElement('div');
+        const iconLetter = stock.ticker.charAt(0).toUpperCase();
+        iconSpan.textContent = iconLetter;
+        // The icon itself is drawn on a circular background; we set
+        // explicit width and height so the background is round.
+        const iconDiameter = size * 0.35;
+        iconSpan.style.width = iconDiameter + 'px';
+        iconSpan.style.height = iconDiameter + 'px';
+        iconSpan.style.borderRadius = '50%';
+        // Lighten the border colour for the icon background.
+        const iconBgColor = changePercent >= 0 ? 'hsla(130, 60%, 55%, 0.9)' : 'hsla(0, 60%, 55%, 0.9)';
+        iconSpan.style.background = iconBgColor;
+        // Center the letter inside the icon.
+        iconSpan.style.display = 'flex';
+        iconSpan.style.alignItems = 'center';
+        iconSpan.style.justifyContent = 'center';
+        iconSpan.style.color = '#ffffff';
+        iconSpan.style.fontWeight = 'bold';
+        // Font size for the letter is a fraction of the icon diameter.
+        iconSpan.style.fontSize = (iconDiameter * 0.5) + 'px';
+        iconSpan.style.lineHeight = '1';
+        // Create ticker and percentage spans. Use large font for the ticker
+        // and a smaller font for the percentage. The sizes scale with
+        // the bubble diameter. We add some margin between elements to
+        // balance the vertical spacing.
+        tickerSpan = document.createElement('div');
+        tickerSpan.textContent = stock.ticker;
+        // Font size for ticker is roughly 40% of the diameter but not
+        // less than 14px.
+        tickerSpan.style.fontSize = Math.max(14, size * 0.40) + 'px';
+        tickerSpan.style.lineHeight = '1';
+        tickerSpan.style.marginTop = (size * 0.02) + 'px';
+        pctSpan = document.createElement('div');
+        pctSpan.textContent = pctStr;
+        pctSpan.style.fontSize = Math.max(12, size * 0.22) + 'px';
+        pctSpan.style.lineHeight = '1';
+        pctSpan.style.marginTop = (size * 0.01) + 'px';
+      } else {
+        // Fallback: generate a bubble with a random size, hue and value.
+        size = Math.random() * 120 + 60;
+        const randomValue = (Math.random() * 100).toFixed(2);
         const hue = randomHue();
         gradient =
-          'radial-gradient(circle at 30% 30%, ' +
-          'hsla(' + hue + ', 90%, 70%, 0.8), ' +
-          'hsla(' + hue + ', 90%, 50%, 0.6) 70%, transparent)';
+          'radial-gradient(circle at 40% 40%, ' +
+          'hsla(' + hue + ', 90%, 70%, 0.8) 0%, ' +
+          'hsla(' + hue + ', 90%, 40%, 0.6) 70%, ' +
+          'hsla(' + hue + ', 90%, 30%, 0.0) 90%)';
+        borderColor = 'hsl(' + hue + ', 80%, 55%)';
+        // Single-line content for fallback: just the random value. We use
+        // the ticker span to hold it.
+        tickerSpan = document.createElement('div');
+        tickerSpan.textContent = randomValue;
+        tickerSpan.style.fontSize = Math.max(14, size * 0.30) + 'px';
+        tickerSpan.style.lineHeight = '1';
       }
-      // Starting position: randomly distribute across viewport.
-      const startX = Math.random() * (window.innerWidth - size);
-      const startY = Math.random() * (window.innerHeight - size);
-      // Small initial velocities for gentle motion.
+      // Generate starting positions and velocities. Randomly position within
+      // the viewport bounds taking into account the bubble size.
+      const startX = Math.random() * Math.max(0, window.innerWidth - size);
+      const startY = Math.random() * Math.max(0, window.innerHeight - size);
       const vx = (Math.random() - 0.5) * 2;
       const vy = (Math.random() - 0.5) * 2;
+      // Create the bubble container element. We use flexbox to stack
+      // children vertically and centre them. Additional effects such as
+      // a thick neon ring and drop shadow are applied via border and
+      // box-shadow.
       const div = document.createElement('div');
       div.className = 'bubble';
       div.style.width = size + 'px';
       div.style.height = size + 'px';
+      div.style.borderRadius = '50%';
+      div.style.display = 'flex';
+      div.style.flexDirection = 'column';
+      div.style.alignItems = 'center';
+      div.style.justifyContent = 'center';
+      div.style.cursor = 'grab';
+      div.style.userSelect = 'none';
+      div.style.pointerEvents = 'auto';
+      div.style.color = 'white';
+      div.style.fontWeight = 'bold';
+      div.style.textAlign = 'center';
       div.style.background = gradient;
-      div.textContent = label;
-      // Preserve the newline in the label so ticker and percentage
-      // appear on separate lines. Using `pre-line` collapses spaces
-      // but honours newline characters.
-      div.style.whiteSpace = 'pre-line';
-      // Adjust the font size based on the bubble’s diameter. We scale
-      // the font to roughly 20 % of the bubble size so that two lines
-      // of text (ticker and percentage) fit comfortably inside the
-      // circle. A minimum font size prevents text from becoming too
-      // small on very small bubbles. Without this dynamic sizing the
-      // labels could overflow or wrap outside the bubble.
-      const minFont = 12;
-      const computedFont = size * 0.20;
-      const fontSize = computedFont < minFont ? minFont : computedFont;
-      div.style.fontSize = fontSize + 'px';
-      // Use a slightly tighter line height to keep the two lines
-      // vertically centred and avoid clipping when the bubble is small.
-      div.style.lineHeight = '1.1';
+      // Set border thickness as 4% of the diameter to form a clear neon ring.
+      const borderThickness = size * 0.04;
+      div.style.border = borderThickness + 'px solid ' + borderColor;
+      // Add a soft glow using box-shadow. The spread radius is a fraction
+      // of the diameter to create a halo around the bubble.
+      const glowRadius = size * 0.2;
+      div.style.boxShadow = '0 0 ' + glowRadius + 'px ' + borderColor;
+      // Append icon, ticker and percentage spans if present. Use small
+      // margins to space them out. When iconSpan or pctSpan are null
+      // they are skipped.
+      if (iconSpan) {
+        div.appendChild(iconSpan);
+      }
+      if (tickerSpan) {
+        div.appendChild(tickerSpan);
+      }
+      if (pctSpan) {
+        div.appendChild(pctSpan);
+      }
       container.appendChild(div);
       return {
         el: div,
@@ -226,7 +288,6 @@
         vx: vx,
         vy: vy,
         size: size,
-        // Store the change percentage so we can apply downward drift later.
         changePercent: changePercent,
         releasedCooldown: 0
       };
