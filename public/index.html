@@ -45,32 +45,35 @@
      * This script implements an interactive bubble field.
      *
      * Key changes from the original version:
-     *  - The number of bubbles has been increased to 200.
-     *  - Bubbles are initially spawned in a tight cluster near the centre of the screen
-     *    and then repel each other to distribute themselves.
-     *  - A simple pairwise repulsion is applied each frame to prevent overlaps and
-     *    encourage an even distribution. After the initial expansion, the same force
-     *    gives the bubbles a gentle random drift.
-     *  - Mouse interaction has been rewritten. Bubbles no longer flee from the
-     *    pointer; instead, you can click and drag any bubble. Dragging applies a
-     *    proportional force so the bubble follows your pointer with inertia. While
-     *    dragging, the dragged bubble still repels other bubbles, pushing them
-     *    aside naturally.
+     *  - The number of bubbles has been increased from the original but
+     *    reduced from the previous version to around 150 for better
+     *    readability and performance.
+     *  - Bubbles spawn randomly across the screen (rather than in a tight
+     *    cluster) and repel each other to settle into an even distribution.
+     *  - Pairwise repulsion runs each frame to prevent overlaps and, in
+     *    combination with random initial velocities, provides a gentle drift.
+     *  - Mouse interaction is rewritten: bubbles no longer flee from the
+     *    pointer; instead you can click and drag any bubble. Dragging applies
+     *    a proportional force so the bubble chases your pointer with some
+     *    inertia. While dragging, the bubble still repels others, pushing
+     *    them aside naturally. Releasing a bubble dampens its velocity to
+     *    avoid jittery oscillations.
      */
 
     const container = document.getElementById('bubble-container');
     const bubbles = [];
-    const numBubbles = 200;
-    // Strength of inter‑bubble repulsion. A higher value causes bubbles
-    // to push apart more quickly when they overlap. We use a relatively
-    // strong force at the beginning so the initially clustered bubbles
-    // separate promptly; friction will dampen their velocities over time.
-    const repulsionStrength = 1.0;
-    // Friction factor to slow down bubbles over time.
+    const numBubbles = 150;
+    // Strength of inter‑bubble repulsion. A modest value causes bubbles
+    // to separate gently without an explosive "blow‑apart" effect. This
+    // value matches the original implementation.
+    const repulsionStrength = 0.05;
+    // Friction factor to slow down bubbles over time. Higher friction
+    // damps residual velocities after dragging to prevent excessive wobble.
     const friction = 0.98;
     // Amount of random jitter added to each bubble's velocity every frame
-    // to simulate gentle drift.
-    const jitter = 0.02;
+    // to simulate gentle drift. Slightly higher than before so bubbles
+    // continue to drift when their initial velocities decay.
+    const jitter = 0.03;
 
     /**
      * Generate a random hue for bubble colouring.
@@ -89,12 +92,15 @@
     function createBubble() {
       // Bubble sizes vary between 50 and 170px.
       const size = Math.random() * 120 + 50;
-      // Start near the centre of the screen with slight random offset.
-      const startX = window.innerWidth / 2 + (Math.random() - 0.5) * 50;
-      const startY = window.innerHeight / 2 + (Math.random() - 0.5) * 50;
-      // Initial velocities start at zero.
-      const vx = 0;
-      const vy = 0;
+      // Start at a random location within the viewport. Subtract the
+      // bubble size so it remains fully visible. This distributes
+      // bubbles across the screen rather than clumping them together.
+      const startX = Math.random() * (window.innerWidth - size);
+      const startY = Math.random() * (window.innerHeight - size);
+      // Give each bubble a small random initial velocity so that it drifts
+      // naturally. The range is modest (±1), producing a gentle motion.
+      const vx = (Math.random() - 0.5) * 2;
+      const vy = (Math.random() - 0.5) * 2;
       // Random numeric label for the bubble.
       const value = (Math.random() * 100).toFixed(2);
       // Colour using a radial gradient based on a random hue.
@@ -175,6 +181,12 @@
     window.addEventListener('mouseup', function () {
       if (dragging && draggedBubble) {
         draggedBubble.el.classList.remove('dragging');
+        // Dampen the bubble's velocity when the drag ends. Without this the
+        // bubble retains the high momentum gained while following the mouse and
+        // may oscillate back and forth. Multiplying by a small factor (0.1)
+        // reduces the velocity dramatically, giving a smoother stop.
+        draggedBubble.vx *= 0.1;
+        draggedBubble.vy *= 0.1;
       }
       dragging = false;
       draggedBubble = null;
@@ -238,7 +250,11 @@
           // Apply a proportional force towards the target. Lower values result in
           // more inertia; higher values make the bubble follow the pointer more
           // closely.
-          const followStrength = 0.2;
+          // Reduce the follow strength so the bubble lags behind the pointer
+          // and chases it, creating an inertia effect. Lower values increase
+          // inertia; previously this was 0.2 which made the bubble snap too
+          // quickly and oscillate on release.
+          const followStrength = 0.1;
           bubble.vx += dx * followStrength;
           bubble.vy += dy * followStrength;
         }
