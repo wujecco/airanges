@@ -76,23 +76,31 @@
     // bubble can more effectively push others aside. This base value
     // deliberately matches the earlier behaviour so un‑dragged bubbles
     // settle calmly.
-    const repulsionStrength = 0.07;
+    // Base repulsion strength between bubbles. Increasing this value will
+    // make bubbles push each other apart more strongly. We slightly
+    // increase it compared to the previous tuning to help dragged
+    // bubbles clear a path through the field.
+    const repulsionStrength = 0.08;
     // How much stronger the repulsion should be when one of the two
     // interacting bubbles is currently being dragged. A larger value
     // makes the dragged bubble act like a bull in a china shop, clearing
-    // a path through neighbouring bubbles. Values between 3 and 5 work
-    // well; tweak as desired.  We choose 4 for a noticeable but not
-    // outrageous push.
-    const dragRepulsionMultiplier = 4;
+    // a path through neighbouring bubbles. We increase this from 4 to 6
+    // so that a dragged bubble more effectively pushes aside its
+    // neighbours.
+    const dragRepulsionMultiplier = 6;
     // Reduce the repulsion applied to a bubble that has just been released
     // from a drag. While the "releasedCooldown" counter is greater than
     // zero, the repulsion force affecting that bubble will be scaled by
     // this factor. Lower values further suppress jitter after releasing a
-    // bubble. 0.5 halves the repulsion during cooldown.
-    const releasedRepulsionFactor = 0.5;
-    // Friction factor to slow down bubbles over time. Higher friction
-    // damps residual velocities after dragging to prevent excessive wobble.
-    const friction = 0.98;
+    // bubble. We decrease this from 0.5 to 0.2 to damp residual
+    // oscillations.
+    const releasedRepulsionFactor = 0.2;
+    // Friction factor to slow down bubbles over time. Lower friction
+    // (closer to 0) means more damping. Increasing friction (closer to
+    // 1) means less damping. We reduce friction slightly from 0.98 to
+    // 0.96 so that velocities decay faster after interactions and
+    // dragging, which should reduce post‑drag shaking.
+    const friction = 0.96;
     // Amount of random jitter added to each bubble's velocity every frame
     // to simulate gentle drift. Keeping this small ensures a gentle
     // wandering motion across the viewport.
@@ -370,7 +378,13 @@
           // snap more quickly to the cursor. Here we choose 0.12 to
           // provide a noticeable delay while still allowing the bubble to
           // accelerate enough to push neighbours aside.
-          const followStrength = 0.12;
+          // Strength of the pull towards the mouse while dragging. A
+          // smaller value makes the dragged bubble chase the pointer
+          // more slowly, increasing inertia. We reduce this from
+          // 0.12 to 0.10 to give the bubble a bit more lag, which
+          // allows it to build momentum and push through other bubbles
+          // without snapping directly under the cursor.
+          const followStrength = 0.10;
           bubble.vx += dx * followStrength;
           bubble.vy += dy * followStrength;
         }
