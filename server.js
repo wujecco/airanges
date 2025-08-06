@@ -87,24 +87,64 @@ app.get('/api/sp500', async (req, res) => {
     // Fetch the delayed realtime price for each ticker. Using
     // `source=delayed_sip` provides 15‑minute delayed SIP data which is
     // generally accessible under Intrinio’s US stock price packages.
+    /*
+     * For each ticker, retrieve both the latest realtime price (15‑minute delayed
+     * SIP) and the most recent daily price record. The daily price endpoint
+     * includes a `percent_change` field representing the percentage change
+     * from the previous close【451819717915656†L780-L860】. By requesting only the most
+     * recent record, we can use this value directly. If any request
+     * fails, nulls are returned for that ticker.
+     */
     const pricePromises = tickers.map(async (ticker) => {
-      const priceUrl = `https://api-v2.intrinio.com/securities/${ticker}/prices/realtime?source=delayed_sip&api_key=${apiKey}`;
+      const realtimeUrl =
+        `https://api-v2.intrinio.com/securities/${ticker}/prices/realtime?source=delayed_sip&api_key=${apiKey}`;
+      const dailyUrl =
+        `https://api-v2.intrinio.com/securities/${ticker}/prices?frequency=daily&page_size=1&sort_order=desc&api_key=${apiKey}`;
       try {
-        const priceResp = await fetch(priceUrl);
-        if (!priceResp.ok) {
-          return { ticker, price: null };
+        const [realtimeResp, dailyResp] = await Promise.all([
+          fetch(realtimeUrl),
+          fetch(dailyUrl),
+        ]);
+        let current = null;
+        let changePercent = null;
+        // Parse realtime data for current price
+        if (realtimeResp.ok) {
+          const priceData = await realtimeResp.json();
+          current =
+            priceData.normal_market_hours_last_price ??
+            priceData.last_price ??
+            priceData.eod_close_price ??
+            null;
         }
-        const priceData = await priceResp.json();
-        // Choose the most relevant price field: normal_market_hours_last_price,
-        // last_price, or eod_close_price. If none exist, set null.
-        const price = priceData.normal_market_hours_last_price ??
-                      priceData.last_price ??
-                      priceData.eod_close_price ??
-                      null;
-        return { ticker, price };
+        // Parse daily data for percent_change
+        if (dailyResp.ok) {
+          const dailyData = await dailyResp.json();
+          if (
+            dailyData &&
+            Array.isArray(dailyData.stock_prices) &&
+            dailyData.stock_prices.length > 0
+          ) {
+            const dailyRecord = dailyData.stock_prices[0];
+            if (
+              dailyRecord.percent_change !== undefined &&
+              dailyRecord.percent_change !== null
+            ) {
+              changePercent = dailyRecord.percent_change;
+            } else if (
+              dailyRecord.close != null &&
+              dailyRecord.prev_close != null &&
+              dailyRecord.prev_close !== 0
+            ) {
+              changePercent =
+                ((dailyRecord.close - dailyRecord.prev_close) /
+                  dailyRecord.prev_close) *
+                100;
+            }
+          }
+        }
+        return { ticker, price: current, changePercent };
       } catch (err) {
-        // On network or parsing errors, return null for price.
-        return { ticker, price: null };
+        return { ticker, price: null, changePercent: null };
       }
     });
     const prices = await Promise.all(pricePromises);
