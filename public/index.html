@@ -63,16 +63,33 @@
     const container = document.getElementById('bubble-container');
     const bubbles = [];
     const numBubbles = 150;
-    // Strength of inter‑bubble repulsion. A modest value causes bubbles
-    // to separate gently without an explosive "blow‑apart" effect. This
-    // value matches the original implementation.
+    // Base strength of inter‑bubble repulsion. A modest value causes bubbles
+    // to separate gently without an explosive "blow‑apart" effect.  When a
+    // bubble is actively dragged the repulsion force is temporarily
+    // multiplied (see dragRepulsionMultiplier below) so that the dragged
+    // bubble can more effectively push others aside. This base value
+    // deliberately matches the earlier behaviour so un‑dragged bubbles
+    // settle calmly.
     const repulsionStrength = 0.07;
+    // How much stronger the repulsion should be when one of the two
+    // interacting bubbles is currently being dragged. A larger value
+    // makes the dragged bubble act like a bull in a china shop, clearing
+    // a path through neighbouring bubbles. Values between 3 and 5 work
+    // well; tweak as desired.  We choose 4 for a noticeable but not
+    // outrageous push.
+    const dragRepulsionMultiplier = 4;
+    // Reduce the repulsion applied to a bubble that has just been released
+    // from a drag. While the "releasedCooldown" counter is greater than
+    // zero, the repulsion force affecting that bubble will be scaled by
+    // this factor. Lower values further suppress jitter after releasing a
+    // bubble. 0.5 halves the repulsion during cooldown.
+    const releasedRepulsionFactor = 0.5;
     // Friction factor to slow down bubbles over time. Higher friction
     // damps residual velocities after dragging to prevent excessive wobble.
     const friction = 0.98;
     // Amount of random jitter added to each bubble's velocity every frame
-    // to simulate gentle drift. Slightly higher than before so bubbles
-    // continue to drift when their initial velocities decay.
+    // to simulate gentle drift. Keeping this small ensures a gentle
+    // wandering motion across the viewport.
     const jitter = 0.03;
 
     /**
@@ -197,8 +214,11 @@
         // the bubble from wobbling back and forth after being released.
         draggedBubble.vx = 0;
         draggedBubble.vy = 0;
-        // Set a short cooldown in frames (e.g. 20 frames ≈ 0.33s at 60fps).
-        draggedBubble.releasedCooldown = 20;
+        // Set a cooldown period after dragging ends. During this time the
+        // repulsion force on this bubble is reduced and jitter is
+        // suppressed. Increase the number of frames to lengthen the
+        // settling time. At 60fps, 40 frames ≈ 0.66s.
+        draggedBubble.releasedCooldown = 40;
       }
       dragging = false;
       draggedBubble = null;
@@ -228,7 +248,19 @@
             const uy = dy / dist;
             // Strength of force increases as bubbles get closer.
             const strength = (minDist - dist) / minDist;
-            const force = repulsionStrength * strength;
+            // Determine if either bubble is currently being dragged. If so,
+            // multiply the base repulsion strength so the dragged bubble
+            // more effectively clears a path through neighbours. Also
+            // reduce the repulsion if one of the bubbles is in its
+            // post‑release cooldown period to minimise jitter.
+            let forceMultiplier = 1;
+            if (draggedBubble && (b1 === draggedBubble || b2 === draggedBubble)) {
+              forceMultiplier *= dragRepulsionMultiplier;
+            }
+            if (b1.releasedCooldown > 0 || b2.releasedCooldown > 0) {
+              forceMultiplier *= releasedRepulsionFactor;
+            }
+            const force = repulsionStrength * strength * forceMultiplier;
             // Push each bubble away from the other.
             b1.vx += ux * force;
             b1.vy += uy * force;
@@ -274,7 +306,12 @@
           // Increase follow strength so the dragged bubble gains enough
           // momentum to push neighbouring bubbles aside while still
           // maintaining some inertia (it will lag slightly behind the pointer).
-          const followStrength = 0.15;
+          // Lower followStrength makes the dragged bubble lag further behind
+          // the pointer, increasing inertia. A higher value would make it
+          // snap more quickly to the cursor. Here we choose 0.12 to
+          // provide a noticeable delay while still allowing the bubble to
+          // accelerate enough to push neighbours aside.
+          const followStrength = 0.12;
           bubble.vx += dx * followStrength;
           bubble.vy += dy * followStrength;
         }
