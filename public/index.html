@@ -151,14 +151,26 @@
             // back to a default size.
             changePercent = stock.changePercent || 0;
             const absChange = Math.abs(changePercent);
-            const minSize = 60;
-            const maxSize = 200;
+            // Define the minimum and maximum bubble sizes. To make
+            // differences in daily percentage changes more visually
+            // significant, widen the range and apply an exponent to the
+            // ratio. A larger exponent (> 1) exaggerates differences
+            // between large and small movers so that the biggest
+            // percentage change produces a much bigger bubble.
+            const minSize = 50;
+            const maxSize = 250;
             const range = maxSize - minSize;
             let ratio = 0;
             if (maxAbsChange > 0) {
               ratio = absChange / maxAbsChange;
             }
-            size = minSize + range * ratio;
+            // Apply an exponent to emphasise differences. Raising the
+            // ratio to the power of 1.5 means that small changes shrink
+            // relatively more while large changes grow more. Values must
+            // stay within [0,1].
+            const exponent = 1.5;
+            const ratioExp = Math.pow(ratio, exponent);
+            size = minSize + range * ratioExp;
             // Format the percentage with a sign and two decimals.
             const pctStr =
               (changePercent > 0 ? '+' : changePercent < 0 ? '' : '') +
