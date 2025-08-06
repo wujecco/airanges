@@ -230,23 +230,25 @@
       // characters use ~17 %. The percentage text uses 20 % of the
       // diameter. Minimum font sizes ensure readability on tiny
       // bubbles.
-      // Compute font sizes. Reduce the base percentage so that
-      // labels in smaller bubbles don't overflow. The ticker font
-      // scales with size*0.30 (rather than 0.35) and is further
-      // reduced when the ticker contains more than three characters.
+      // Compute font sizes. Reduce the base percentage further for
+      // smaller bubbles so that labels never overflow the circle.
+      // Ticker font uses roughly 25% of the diameter for tickers up
+      // to 3 characters. Longer tickers are scaled down by 3/len.
+      // A lower minimum (8px) ensures the text remains inside very
+      // small bubbles.
       let tickerSize;
       if (tickerSpan && stock && stock.ticker) {
         const len = stock.ticker.length;
         const scale = len > 3 ? (3 / len) : 1;
-        tickerSize = Math.max(10, size * 0.30 * scale);
+        tickerSize = Math.max(8, size * 0.25 * scale);
       } else {
-        // In fallback mode use a slightly smaller font as the value can
-        // be longer than a typical ticker.
-        tickerSize = Math.max(10, size * 0.28);
+        // In fallback mode, use a slightly reduced size since
+        // the random number may have more digits than a typical ticker.
+        tickerSize = Math.max(8, size * 0.24);
       }
-      // Percentage text uses 15% of the diameter with a low minimum to
-      // prevent overflow on tiny bubbles.
-      const pctSize = Math.max(8, size * 0.15);
+      // Percentage text uses ~12% of the diameter with a lower
+      // minimum to keep it inside small bubbles.
+      const pctSize = Math.max(6, size * 0.12);
       // Assign computed font sizes. Also disable pointer events on
       // child spans so clicks always register on the bubble element,
       // allowing dragging even when clicking on text.
