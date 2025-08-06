@@ -66,7 +66,7 @@
     // Strength of inter‑bubble repulsion. A modest value causes bubbles
     // to separate gently without an explosive "blow‑apart" effect. This
     // value matches the original implementation.
-    const repulsionStrength = 0.05;
+    const repulsionStrength = 0.07;
     // Friction factor to slow down bubbles over time. Higher friction
     // damps residual velocities after dragging to prevent excessive wobble.
     const friction = 0.98;
@@ -115,7 +115,18 @@
         'hsla(' + hue + ', 90%, 50%, 0.6) 70%, transparent)';
       div.textContent = value;
       container.appendChild(div);
-      return { el: div, x: startX, y: startY, vx: vx, vy: vy, size: size };
+      return {
+        el: div,
+        x: startX,
+        y: startY,
+        vx: vx,
+        vy: vy,
+        size: size,
+        // When a bubble is released after dragging, this counter is set
+        // to a positive value. During the cooldown, jitter is suppressed
+        // to avoid shaking while the bubble settles.
+        releasedCooldown: 0
+      };
     }
 
     // Populate the bubbles array.
@@ -181,12 +192,13 @@
     window.addEventListener('mouseup', function () {
       if (dragging && draggedBubble) {
         draggedBubble.el.classList.remove('dragging');
-        // Dampen the bubble's velocity when the drag ends. Without this the
-        // bubble retains the high momentum gained while following the mouse and
-        // may oscillate back and forth. Multiplying by a small factor (0.1)
-        // reduces the velocity dramatically, giving a smoother stop.
-        draggedBubble.vx *= 0.1;
-        draggedBubble.vy *= 0.1;
+        // When dragging ends, zero out the bubble's velocity and start a
+        // cooldown period during which jitter is suppressed. This prevents
+        // the bubble from wobbling back and forth after being released.
+        draggedBubble.vx = 0;
+        draggedBubble.vy = 0;
+        // Set a short cooldown in frames (e.g. 20 frames ≈ 0.33s at 60fps).
+        draggedBubble.releasedCooldown = 20;
       }
       dragging = false;
       draggedBubble = null;
@@ -227,11 +239,16 @@
       }
 
       bubbles.forEach(function (bubble) {
-        // Add some random jitter to create a gentle drifting motion. This is
-        // omitted for the bubble being dragged, since it follows the mouse.
-        if (bubble !== draggedBubble) {
+        // Add some random jitter to create a gentle drifting motion. Jitter
+        // is omitted for the bubble being dragged (it follows the mouse) and
+        // for a short period after a bubble is released to prevent shaking.
+        if (bubble !== draggedBubble && bubble.releasedCooldown === 0) {
           bubble.vx += (Math.random() - 0.5) * jitter;
           bubble.vy += (Math.random() - 0.5) * jitter;
+        } else if (bubble.releasedCooldown > 0) {
+          // Decrement the cooldown counter each frame. When it reaches zero
+          // jitter will resume for this bubble.
+          bubble.releasedCooldown--;
         }
 
         // If this bubble is currently being dragged, apply a force that
@@ -254,7 +271,10 @@
           // and chases it, creating an inertia effect. Lower values increase
           // inertia; previously this was 0.2 which made the bubble snap too
           // quickly and oscillate on release.
-          const followStrength = 0.1;
+          // Increase follow strength so the dragged bubble gains enough
+          // momentum to push neighbouring bubbles aside while still
+          // maintaining some inertia (it will lag slightly behind the pointer).
+          const followStrength = 0.15;
           bubble.vx += dx * followStrength;
           bubble.vy += dy * followStrength;
         }
