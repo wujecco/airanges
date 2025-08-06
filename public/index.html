@@ -230,23 +230,34 @@
       // characters use ~17 %. The percentage text uses 20 % of the
       // diameter. Minimum font sizes ensure readability on tiny
       // bubbles.
+      // Compute font sizes. Reduce the base percentage so that
+      // labels in smaller bubbles don't overflow. The ticker font
+      // scales with size*0.30 (rather than 0.35) and is further
+      // reduced when the ticker contains more than three characters.
       let tickerSize;
       if (tickerSpan && stock && stock.ticker) {
         const len = stock.ticker.length;
         const scale = len > 3 ? (3 / len) : 1;
-        tickerSize = Math.max(16, size * 0.35 * scale);
+        tickerSize = Math.max(10, size * 0.30 * scale);
       } else {
-        // In fallback mode, the random number occupies one line. Use
-        // 30 % of the diameter for the font size.
-        tickerSize = Math.max(16, size * 0.30);
+        // In fallback mode use a slightly smaller font as the value can
+        // be longer than a typical ticker.
+        tickerSize = Math.max(10, size * 0.28);
       }
-      const pctSize = Math.max(12, size * 0.20);
+      // Percentage text uses 15% of the diameter with a low minimum to
+      // prevent overflow on tiny bubbles.
+      const pctSize = Math.max(8, size * 0.15);
+      // Assign computed font sizes. Also disable pointer events on
+      // child spans so clicks always register on the bubble element,
+      // allowing dragging even when clicking on text.
       tickerSpan.style.fontSize = tickerSize + 'px';
       tickerSpan.style.lineHeight = '1';
+      tickerSpan.style.pointerEvents = 'none';
       div.appendChild(tickerSpan);
       if (pctSpan) {
         pctSpan.style.fontSize = pctSize + 'px';
         pctSpan.style.lineHeight = '1';
+        pctSpan.style.pointerEvents = 'none';
         div.appendChild(pctSpan);
       }
       container.appendChild(div);
@@ -344,11 +355,17 @@
       return null;
     }
 
-    // Handle mouse down to start dragging.
+    // Handle mouse down to start dragging. Use closest() to ensure that
+    // clicks on a bubble's child elements (like the ticker or
+    // percentage spans) still start dragging. Without this, a click
+    // on text would have e.target equal to a child div, and the
+    // classList check would fail.
     container.addEventListener('mousedown', function (e) {
-      const target = e.target;
-      if (target.classList.contains('bubble')) {
-        const bubble = findBubbleByElement(target);
+      // Find the closest ancestor with class 'bubble'. If none is found,
+      // the click was outside a bubble and dragging should not start.
+      const bubbleEl = e.target.closest('.bubble');
+      if (bubbleEl) {
+        const bubble = findBubbleByElement(bubbleEl);
         if (bubble) {
           dragging = true;
           draggedBubble = bubble;
