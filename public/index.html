@@ -62,10 +62,16 @@
 
     const container = document.getElementById('bubble-container');
     const bubbles = [];
-    // Number of bubbles to display. This value is replaced once we load
-    // S&P 500 constituents from the server. Defaults to 100 if the
-    // request fails.
-    let numBubbles = 100;
+        // Number of bubbles to display. This value is replaced once we load
+        // S&P 500 constituents from the server. Defaults to 100 if the
+        // request fails.
+        let numBubbles = 100;
+
+        // Track the maximum absolute percent change across all stocks. This is
+        // used to scale bubble sizes proportionally so that the largest
+        // percentage change corresponds to the largest bubble. It will be
+        // computed once stock data is loaded.
+        let maxAbsChange = 1;
 
     // When stock data is loaded from the server, it will be stored here.
     let stockData = null;
@@ -135,35 +141,41 @@
       let label;
       let gradient;
       let changePercent = 0;
-      if (stock && stock.ticker) {
-        // Derive bubble size from the absolute percentage change.
-        // Base size ensures even very small changes are visible. We
-        // multiply the absolute change by a scaling factor to
-        // exaggerate larger moves. Clamp the extra size so extreme
-        // swings don’t overwhelm the layout. For example, a 5% change
-        // yields an extra 25px when scale = 5.
-        const base = 70;
-        const scale = 5;
-        changePercent = stock.changePercent || 0;
-        const extra = Math.min(Math.abs(changePercent) * scale, 150);
-        size = base + extra;
-        // Format the percentage with a sign and two decimals.
-        const pctStr =
-          (changePercent > 0 ? '+' : changePercent < 0 ? '' : '') +
-          (changePercent !== null && !isNaN(changePercent)
-            ? changePercent.toFixed(2) + '%'
-            : '0.00%');
-        label = `${stock.ticker}\n${pctStr}`;
-        // Define colours based on sign: green for positive, red for negative.
-        if (changePercent >= 0) {
-          // Greens: lighten and darken to create depth.
-          gradient =
-            'radial-gradient(circle at 30% 30%, hsla(120, 80%, 65%, 0.85), hsla(120, 80%, 40%, 0.65) 70%, transparent)';
-        } else {
-          gradient =
-            'radial-gradient(circle at 30% 30%, hsla(0, 80%, 65%, 0.85), hsla(0, 80%, 40%, 0.65) 70%, transparent)';
-        }
-      } else {
+          if (stock && stock.ticker) {
+            // Derive bubble size based on the absolute percent change. Compute
+            // a size between a minimum and maximum using the ratio of this
+            // stock's change to the largest change across the dataset. This
+            // ensures the largest mover is clearly the largest bubble and
+            // smaller moves scale down proportionally. If maxAbsChange is
+            // zero (unlikely, but possible if all changes are zero), fall
+            // back to a default size.
+            changePercent = stock.changePercent || 0;
+            const absChange = Math.abs(changePercent);
+            const minSize = 60;
+            const maxSize = 200;
+            const range = maxSize - minSize;
+            let ratio = 0;
+            if (maxAbsChange > 0) {
+              ratio = absChange / maxAbsChange;
+            }
+            size = minSize + range * ratio;
+            // Format the percentage with a sign and two decimals.
+            const pctStr =
+              (changePercent > 0 ? '+' : changePercent < 0 ? '' : '') +
+              (changePercent !== null && !isNaN(changePercent)
+                ? changePercent.toFixed(2) + '%'
+                : '0.00%');
+            label = `${stock.ticker}\n${pctStr}`;
+            // Define colours based on sign: green for positive, red for negative.
+            if (changePercent >= 0) {
+              // Greens: lighten and darken to create depth.
+              gradient =
+                'radial-gradient(circle at 30% 30%, hsla(120, 80%, 65%, 0.85), hsla(120, 80%, 40%, 0.65) 70%, transparent)';
+            } else {
+              gradient =
+                'radial-gradient(circle at 30% 30%, hsla(0, 80%, 65%, 0.85), hsla(0, 80%, 40%, 0.65) 70%, transparent)';
+            }
+          } else {
         // Random bubble fallback
         size = Math.random() * 120 + 50;
         label = (Math.random() * 100).toFixed(2);
@@ -231,6 +243,15 @@
         stockData = Array.isArray(data) ? data : null;
         if (stockData && stockData.length > 0) {
           numBubbles = stockData.length;
+          // Compute the maximum absolute change once so sizes are scaled
+          // proportionally. Avoid division by zero by defaulting to 1 if all
+          // values are zero or undefined.
+          let maxVal = 0;
+          for (const s of stockData) {
+            const cp = Math.abs(s.changePercent || 0);
+            if (cp > maxVal) maxVal = cp;
+          }
+          maxAbsChange = maxVal > 0 ? maxVal : 1;
           for (let i = 0; i < numBubbles; i++) {
             bubbles.push(createBubble(stockData[i]));
           }
@@ -379,17 +400,10 @@
           bubble.releasedCooldown--;
         }
 
-        // Apply a gentle downward drift to bubbles representing stocks with
-        // negative percentage change. This makes losing stocks slowly sink
-        // towards the bottom of the screen. The drift is only applied
-        // when the bubble is not being dragged so that user interaction
-        // remains in full control. Adjust the constant to make the drift
-        // stronger or weaker. A small value creates a subtle motion.
-        if (bubble.changePercent < 0 && bubble !== draggedBubble) {
-          // Add a small downward acceleration. This is independent of
-          // gravity; friction will still dampen the resulting velocity.
-          bubble.vy += 0.05;
-        }
+            // Previously, negative‑percentage bubbles drifted downward. To
+            // simplify the behaviour so all bubbles move consistently, we no
+            // longer apply a downward acceleration for losers. The natural
+            // random jitter and repulsion will still provide gentle motion.
 
         // If this bubble is currently being dragged, apply a force that
         // accelerates it towards the mouse position. The offset keeps the
