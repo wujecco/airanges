@@ -121,40 +121,70 @@
      * @returns {{el: HTMLElement, x: number, y: number, vx: number, vy: number, size: number}}
      */
     function createBubble(stock) {
-      // Bubble sizes vary between 50 and 170px.
-      const size = Math.random() * 120 + 50;
-      // Start at a random location within the viewport. Subtract the
-      // bubble size so it remains fully visible. This distributes
-      // bubbles across the screen rather than clumping them together.
+      /*
+       * Create a bubble DOM element and state object. When stock data
+       * is provided, the bubble's size and colour are derived from
+       * the percentage change relative to the previous close. A larger
+       * absolute change produces a larger bubble. Positive changes are
+       * coloured green; negative changes red. The label shows the
+       * ticker on the first line and the change percentage on the
+       * second line. When no stock data is available, fall back to
+       * random sizing and a random label and colour.
+       */
+      let size;
+      let label;
+      let gradient;
+      let changePercent = 0;
+      if (stock && stock.ticker) {
+        // Derive bubble size from the absolute percentage change.
+        // Base size ensures even very small changes are visible. We
+        // multiply the absolute change by a scaling factor to
+        // exaggerate larger moves. Clamp the extra size so extreme
+        // swings don’t overwhelm the layout. For example, a 5% change
+        // yields an extra 25px when scale = 5.
+        const base = 70;
+        const scale = 5;
+        changePercent = stock.changePercent || 0;
+        const extra = Math.min(Math.abs(changePercent) * scale, 150);
+        size = base + extra;
+        // Format the percentage with a sign and two decimals.
+        const pctStr =
+          (changePercent > 0 ? '+' : changePercent < 0 ? '' : '') +
+          (changePercent !== null && !isNaN(changePercent)
+            ? changePercent.toFixed(2) + '%'
+            : '0.00%');
+        label = `${stock.ticker}\n${pctStr}`;
+        // Define colours based on sign: green for positive, red for negative.
+        if (changePercent >= 0) {
+          // Greens: lighten and darken to create depth.
+          gradient =
+            'radial-gradient(circle at 30% 30%, hsla(120, 80%, 65%, 0.85), hsla(120, 80%, 40%, 0.65) 70%, transparent)';
+        } else {
+          gradient =
+            'radial-gradient(circle at 30% 30%, hsla(0, 80%, 65%, 0.85), hsla(0, 80%, 40%, 0.65) 70%, transparent)';
+        }
+      } else {
+        // Random bubble fallback
+        size = Math.random() * 120 + 50;
+        label = (Math.random() * 100).toFixed(2);
+        const hue = randomHue();
+        gradient =
+          'radial-gradient(circle at 30% 30%, ' +
+          'hsla(' + hue + ', 90%, 70%, 0.8), ' +
+          'hsla(' + hue + ', 90%, 50%, 0.6) 70%, transparent)';
+      }
+      // Starting position: randomly distribute across viewport.
       const startX = Math.random() * (window.innerWidth - size);
       const startY = Math.random() * (window.innerHeight - size);
-      // Give each bubble a small random initial velocity so that it drifts
-      // naturally. The range is modest (±1), producing a gentle motion.
+      // Small initial velocities for gentle motion.
       const vx = (Math.random() - 0.5) * 2;
       const vy = (Math.random() - 0.5) * 2;
-      // Random numeric label for the bubble.
-      // Determine the label for the bubble. If stock data is supplied,
-      // display the ticker and price; otherwise fall back to a random
-      // value. Show the price with two decimals. Use a newline to break
-      // the ticker and price onto separate lines for readability.
-      let value;
-      if (stock && stock.ticker) {
-        const price = stock.price != null ? stock.price.toFixed(2) : '—';
-        value = `${stock.ticker}\n${price}`;
-      } else {
-        value = (Math.random() * 100).toFixed(2);
-      }
-      // Colour using a radial gradient based on a random hue.
-      const hue = randomHue();
       const div = document.createElement('div');
       div.className = 'bubble';
       div.style.width = size + 'px';
       div.style.height = size + 'px';
-      div.style.background =
-        'radial-gradient(circle at 30% 30%, ' +
-        'hsla(' + hue + ', 90%, 70%, 0.8), ' +
-        'hsla(' + hue + ', 90%, 50%, 0.6) 70%, transparent)';
-      div.textContent = value;
+      div.style.background = gradient;
+      div.textContent = label;
       container.appendChild(div);
       return {
         el: div,
@@ -163,9 +193,8 @@
         vx: vx,
         vy: vy,
         size: size,
-        // When a bubble is released after dragging, this counter is set
-        // to a positive value. During the cooldown, jitter is suppressed
-        // to avoid shaking while the bubble settles.
+        // Store the change percentage so we can apply downward drift later.
+        changePercent: changePercent,
         releasedCooldown: 0
       };
     }
@@ -348,6 +377,18 @@
           // Decrement the cooldown counter each frame. When it reaches zero
           // jitter will resume for this bubble.
           bubble.releasedCooldown--;
+        }
+
+        // Apply a gentle downward drift to bubbles representing stocks with
+        // negative percentage change. This makes losing stocks slowly sink
+        // towards the bottom of the screen. The drift is only applied
+        // when the bubble is not being dragged so that user interaction
+        // remains in full control. Adjust the constant to make the drift
+        // stronger or weaker. A small value creates a subtle motion.
+        if (bubble.changePercent < 0 && bubble !== draggedBubble) {
+          // Add a small downward acceleration. This is independent of
+          // gravity; friction will still dampen the resulting velocity.
+          bubble.vy += 0.05;
         }
 
         // If this bubble is currently being dragged, apply a force that
