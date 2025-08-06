@@ -62,7 +62,13 @@
 
     const container = document.getElementById('bubble-container');
     const bubbles = [];
-    const numBubbles = 150;
+    // Number of bubbles to display. This value is replaced once we load
+    // S&P 500 constituents from the server. Defaults to 100 if the
+    // request fails.
+    let numBubbles = 100;
+
+    // When stock data is loaded from the server, it will be stored here.
+    let stockData = null;
     // Base strength of inter‑bubble repulsion. A modest value causes bubbles
     // to separate gently without an explosive "blow‑apart" effect.  When a
     // bubble is actively dragged the repulsion force is temporarily
@@ -106,7 +112,7 @@
      * small random offset so they will push apart under the repulsion force.
      * @returns {{el: HTMLElement, x: number, y: number, vx: number, vy: number, size: number}}
      */
-    function createBubble() {
+    function createBubble(stock) {
       // Bubble sizes vary between 50 and 170px.
       const size = Math.random() * 120 + 50;
       // Start at a random location within the viewport. Subtract the
@@ -119,7 +125,17 @@
       const vx = (Math.random() - 0.5) * 2;
       const vy = (Math.random() - 0.5) * 2;
       // Random numeric label for the bubble.
-      const value = (Math.random() * 100).toFixed(2);
+      // Determine the label for the bubble. If stock data is supplied,
+      // display the ticker and price; otherwise fall back to a random
+      // value. Show the price with two decimals. Use a newline to break
+      // the ticker and price onto separate lines for readability.
+      let value;
+      if (stock && stock.ticker) {
+        const price = stock.price != null ? stock.price.toFixed(2) : '—';
+        value = `${stock.ticker}\n${price}`;
+      } else {
+        value = (Math.random() * 100).toFixed(2);
+      }
       // Colour using a radial gradient based on a random hue.
       const hue = randomHue();
       const div = document.createElement('div');
@@ -147,8 +163,51 @@
     }
 
     // Populate the bubbles array.
-    for (let i = 0; i < numBubbles; i++) {
-      bubbles.push(createBubble());
+    // In the stock mode we defer populating the bubbles until after
+    // fetching data from the server. The `loadStockData` function will
+    // build bubbles based on the downloaded data. If fetching fails,
+    // this fallback block will be used to populate with random values.
+    function populateFallback() {
+      for (let i = 0; i < numBubbles; i++) {
+        bubbles.push(createBubble());
+      }
+    }
+
+    /**
+     * Fetch the S&P 500 constituents and their realtime prices from our
+     * server. The server proxies the Intrinio API and reads the API
+     * key from an environment variable so the key remains secret. On
+     * success, this will assign `stockData` and update `numBubbles` to
+     * the length of the returned array. Then it will create bubbles
+     * using each stock entry. If the fetch fails (e.g. due to
+     * network/authorization errors), it will fall back to creating
+     * random bubbles.
+     */
+    async function loadStockData() {
+      try {
+        const response = await fetch('/api/sp500');
+        if (!response.ok) {
+          throw new Error('Failed to fetch SP500 data');
+        }
+        const data = await response.json();
+        // Use the returned array of {ticker, price} objects.
+        stockData = Array.isArray(data) ? data : null;
+        if (stockData && stockData.length > 0) {
+          numBubbles = stockData.length;
+          for (let i = 0; i < numBubbles; i++) {
+            bubbles.push(createBubble(stockData[i]));
+          }
+        } else {
+          // Fallback to random bubbles if data is empty.
+          populateFallback();
+        }
+      } catch (err) {
+        console.error(err);
+        // Populate with random bubbles if an error occurs.
+        populateFallback();
+      }
+      // Start the animation once bubbles are created.
+      animate();
     }
 
     // Variables to track dragging state.
@@ -352,7 +411,11 @@
       requestAnimationFrame(animate);
     }
 
-    animate();
+    // Kick off the data loading process. This will populate the
+    // `bubbles` array and start the animation when complete. Without
+    // awaiting here, the browser continues to parse and event handlers
+    // are attached immediately.
+    loadStockData();
   </script>
 </body>
 </html>
