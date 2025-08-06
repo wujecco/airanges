@@ -61,9 +61,11 @@
     const container = document.getElementById('bubble-container');
     const bubbles = [];
     const numBubbles = 200;
-    // Strength of inter‑bubble repulsion. Tune this to control how fast
-    // bubbles expand away from each other.
-    const repulsionStrength = 0.05;
+    // Strength of inter‑bubble repulsion. A higher value causes bubbles
+    // to push apart more quickly when they overlap. We use a relatively
+    // strong force at the beginning so the initially clustered bubbles
+    // separate promptly; friction will dampen their velocities over time.
+    const repulsionStrength = 1.0;
     // Friction factor to slow down bubbles over time.
     const friction = 0.98;
     // Amount of random jitter added to each bubble's velocity every frame
@@ -120,6 +122,11 @@
     let draggedBubble = null;
     let dragOffsetX = 0;
     let dragOffsetY = 0;
+    // Track the current mouse coordinates. These values are updated on every
+    // mousemove event so we always know where the pointer is. Without this, using
+    // window.event in the animation loop would not work reliably.
+    let mouseX = 0;
+    let mouseY = 0;
 
     /**
      * Find the bubble object for a given DOM element.
@@ -154,6 +161,14 @@
           e.preventDefault();
         }
       }
+    });
+
+    // Track mouse movement to update the current pointer position. This ensures
+    // we always have up‑to‑date coordinates when calculating drag forces. We attach
+    // this to the container so movements outside a bubble still update the values.
+    container.addEventListener('mousemove', function (e) {
+      mouseX = e.clientX;
+      mouseY = e.clientY;
     });
 
     // Handle mouse up to stop dragging.
@@ -213,11 +228,16 @@
         // multiplier controls how quickly the bubble catches up to the
         // pointer—lower values mean more inertia.
         if (dragging && bubble === draggedBubble) {
-          const targetX = window.event ? window.event.clientX - dragOffsetX : bubble.x;
-          const targetY = window.event ? window.event.clientY - dragOffsetY : bubble.y;
+          // Compute the target position based on the current mouse coordinates minus
+          // the offset captured when the bubble was first clicked. This avoids using
+          // the deprecated window.event property and works across all browsers.
+          const targetX = mouseX - dragOffsetX;
+          const targetY = mouseY - dragOffsetY;
           const dx = targetX - bubble.x;
           const dy = targetY - bubble.y;
-          // Apply a proportional force towards the target.
+          // Apply a proportional force towards the target. Lower values result in
+          // more inertia; higher values make the bubble follow the pointer more
+          // closely.
           const followStrength = 0.2;
           bubble.vx += dx * followStrength;
           bubble.vy += dy * followStrength;
