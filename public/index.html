@@ -27,82 +27,238 @@
       font-weight: bold;
       text-align: center;
       text-shadow: 0 0 4px rgba(0, 0, 0, 0.6);
-      pointer-events: none;
+      /* Allow pointer interaction so bubbles can be dragged */
+      pointer-events: auto;
       user-select: none;
+      cursor: grab;
+    }
+    /* Change cursor while actively dragging */
+    .bubble.dragging {
+      cursor: grabbing;
     }
   </style>
 </head>
 <body>
   <div id="bubble-container"></div>
   <script>
+    /**
+     * This script implements an interactive bubble field.
+     *
+     * Key changes from the original version:
+     *  - The number of bubbles has been increased to 200.
+     *  - Bubbles are initially spawned in a tight cluster near the centre of the screen
+     *    and then repel each other to distribute themselves.
+     *  - A simple pairwise repulsion is applied each frame to prevent overlaps and
+     *    encourage an even distribution. After the initial expansion, the same force
+     *    gives the bubbles a gentle random drift.
+     *  - Mouse interaction has been rewritten. Bubbles no longer flee from the
+     *    pointer; instead, you can click and drag any bubble. Dragging applies a
+     *    proportional force so the bubble follows your pointer with inertia. While
+     *    dragging, the dragged bubble still repels other bubbles, pushing them
+     *    aside naturally.
+     */
+
     const container = document.getElementById('bubble-container');
     const bubbles = [];
-    const numBubbles = 30;
+    const numBubbles = 200;
+    // Strength of inter‑bubble repulsion. Tune this to control how fast
+    // bubbles expand away from each other.
+    const repulsionStrength = 0.05;
+    // Friction factor to slow down bubbles over time.
+    const friction = 0.98;
+    // Amount of random jitter added to each bubble's velocity every frame
+    // to simulate gentle drift.
+    const jitter = 0.02;
+
+    /**
+     * Generate a random hue for bubble colouring.
+     * @returns {number}
+     */
     function randomHue() {
       return Math.floor(Math.random() * 360);
     }
+
+    /**
+     * Create a bubble DOM element and corresponding state object.
+     * Initially position all bubbles near the centre of the viewport with a
+     * small random offset so they will push apart under the repulsion force.
+     * @returns {{el: HTMLElement, x: number, y: number, vx: number, vy: number, size: number}}
+     */
     function createBubble() {
+      // Bubble sizes vary between 50 and 170px.
       const size = Math.random() * 120 + 50;
-      const x = Math.random() * (window.innerWidth - size);
-      const y = Math.random() * (window.innerHeight - size);
-      const vx = (Math.random() - 0.5) * 2;
-      const vy = (Math.random() - 0.5) * 2;
+      // Start near the centre of the screen with slight random offset.
+      const startX = window.innerWidth / 2 + (Math.random() - 0.5) * 50;
+      const startY = window.innerHeight / 2 + (Math.random() - 0.5) * 50;
+      // Initial velocities start at zero.
+      const vx = 0;
+      const vy = 0;
+      // Random numeric label for the bubble.
       const value = (Math.random() * 100).toFixed(2);
+      // Colour using a radial gradient based on a random hue.
       const hue = randomHue();
       const div = document.createElement('div');
       div.className = 'bubble';
       div.style.width = size + 'px';
       div.style.height = size + 'px';
-      div.style.background = 'radial-gradient(circle at 30% 30%, hsla(' + hue + ', 90%, 70%, 0.8), hsla(' + hue + ', 90%, 50%, 0.6) 70%, transparent)';
+      div.style.background =
+        'radial-gradient(circle at 30% 30%, ' +
+        'hsla(' + hue + ', 90%, 70%, 0.8), ' +
+        'hsla(' + hue + ', 90%, 50%, 0.6) 70%, transparent)';
       div.textContent = value;
       container.appendChild(div);
-      return { el: div, x: x, y: y, vx: vx, vy: vy, size: size };
+      return { el: div, x: startX, y: startY, vx: vx, vy: vy, size: size };
     }
+
+    // Populate the bubbles array.
     for (let i = 0; i < numBubbles; i++) {
       bubbles.push(createBubble());
     }
-    let mouse = { x: null, y: null };
-    container.addEventListener('mousemove', function(e) {
-      const rect = container.getBoundingClientRect();
-      mouse.x = e.clientX - rect.left;
-      mouse.y = e.clientY - rect.top;
+
+    // Variables to track dragging state.
+    let dragging = false;
+    let draggedBubble = null;
+    let dragOffsetX = 0;
+    let dragOffsetY = 0;
+
+    /**
+     * Find the bubble object for a given DOM element.
+     * @param {HTMLElement} target
+     * @returns {object|null}
+     */
+    function findBubbleByElement(target) {
+      for (const bubble of bubbles) {
+        if (bubble.el === target) {
+          return bubble;
+        }
+      }
+      return null;
+    }
+
+    // Handle mouse down to start dragging.
+    container.addEventListener('mousedown', function (e) {
+      const target = e.target;
+      if (target.classList.contains('bubble')) {
+        const bubble = findBubbleByElement(target);
+        if (bubble) {
+          dragging = true;
+          draggedBubble = bubble;
+          // Mark the element for cursor change.
+          bubble.el.classList.add('dragging');
+          // Compute the offset between mouse position and bubble position to
+          // maintain where inside the bubble the user clicked.
+          const rect = bubble.el.getBoundingClientRect();
+          dragOffsetX = e.clientX - rect.left;
+          dragOffsetY = e.clientY - rect.top;
+          // Prevent default to avoid text selection, etc.
+          e.preventDefault();
+        }
+      }
     });
-    container.addEventListener('mouseleave', function() {
-      mouse.x = null;
-      mouse.y = null;
+
+    // Handle mouse up to stop dragging.
+    window.addEventListener('mouseup', function () {
+      if (dragging && draggedBubble) {
+        draggedBubble.el.classList.remove('dragging');
+      }
+      dragging = false;
+      draggedBubble = null;
     });
+
+    // Main animation loop. Applies forces, updates positions and DOM.
     function animate() {
       const width = window.innerWidth;
       const height = window.innerHeight;
-      bubbles.forEach(function(bubble) {
-        bubble.x += bubble.vx;
-        bubble.y += bubble.vy;
-        if (bubble.x <= 0 || bubble.x + bubble.size >= width) {
-          bubble.vx *= -1;
-          bubble.x = Math.max(0, Math.min(bubble.x, width - bubble.size));
-        }
-        if (bubble.y <= 0 || bubble.y + bubble.size >= height) {
-          bubble.vy *= -1;
-          bubble.y = Math.max(0, Math.min(bubble.y, height - bubble.size));
-        }
-        bubble.vx *= 0.99;
-        bubble.vy *= 0.99;
-        if (mouse.x !== null && mouse.y !== null) {
-          const dx = bubble.x + bubble.size / 2 - mouse.x;
-          const dy = bubble.y + bubble.size / 2 - mouse.y;
+
+      // Apply pairwise repulsion between all bubbles. This runs in O(n²), but
+      // with 200 elements it's still performant in modern browsers. The
+      // repulsion pushes overlapping or nearby bubbles apart.
+      for (let i = 0; i < bubbles.length; i++) {
+        const b1 = bubbles[i];
+        for (let j = i + 1; j < bubbles.length; j++) {
+          const b2 = bubbles[j];
+          const dx = b1.x + b1.size / 2 - (b2.x + b2.size / 2);
+          const dy = b1.y + b1.size / 2 - (b2.y + b2.size / 2);
           const distSq = dx * dx + dy * dy;
-          const radius = bubble.size * 1.2;
-          if (distSq < radius * radius) {
+          const minDist = (b1.size + b2.size) / 2;
+          // Only apply a force when bubbles are within repulsion range.
+          if (distSq < (minDist * minDist)) {
             const dist = Math.sqrt(distSq) || 1;
-            const force = 0.4;
-            bubble.vx += (dx / dist) * force;
-            bubble.vy += (dy / dist) * force;
+            // Normalise direction vector.
+            const ux = dx / dist;
+            const uy = dy / dist;
+            // Strength of force increases as bubbles get closer.
+            const strength = (minDist - dist) / minDist;
+            const force = repulsionStrength * strength;
+            // Push each bubble away from the other.
+            b1.vx += ux * force;
+            b1.vy += uy * force;
+            b2.vx -= ux * force;
+            b2.vy -= uy * force;
           }
         }
-        bubble.el.style.transform = 'translate(' + bubble.x + 'px, ' + bubble.y + 'px)';
+      }
+
+      bubbles.forEach(function (bubble) {
+        // Add some random jitter to create a gentle drifting motion. This is
+        // omitted for the bubble being dragged, since it follows the mouse.
+        if (bubble !== draggedBubble) {
+          bubble.vx += (Math.random() - 0.5) * jitter;
+          bubble.vy += (Math.random() - 0.5) * jitter;
+        }
+
+        // If this bubble is currently being dragged, apply a force that
+        // accelerates it towards the mouse position. The offset keeps the
+        // pointer relative to where it initially grabbed the bubble. The
+        // multiplier controls how quickly the bubble catches up to the
+        // pointer—lower values mean more inertia.
+        if (dragging && bubble === draggedBubble) {
+          const targetX = window.event ? window.event.clientX - dragOffsetX : bubble.x;
+          const targetY = window.event ? window.event.clientY - dragOffsetY : bubble.y;
+          const dx = targetX - bubble.x;
+          const dy = targetY - bubble.y;
+          // Apply a proportional force towards the target.
+          const followStrength = 0.2;
+          bubble.vx += dx * followStrength;
+          bubble.vy += dy * followStrength;
+        }
+
+        // Apply friction so bubbles eventually slow down.
+        bubble.vx *= friction;
+        bubble.vy *= friction;
+
+        // Update position based on velocity.
+        bubble.x += bubble.vx;
+        bubble.y += bubble.vy;
+
+        // Constrain bubbles within viewport boundaries. When a bubble hits
+        // the edge, invert its velocity component and clamp its position
+        // inside the bounds.
+        if (bubble.x < 0) {
+          bubble.x = 0;
+          bubble.vx *= -1;
+        }
+        if (bubble.x + bubble.size > width) {
+          bubble.x = width - bubble.size;
+          bubble.vx *= -1;
+        }
+        if (bubble.y < 0) {
+          bubble.y = 0;
+          bubble.vy *= -1;
+        }
+        if (bubble.y + bubble.size > height) {
+          bubble.y = height - bubble.size;
+          bubble.vy *= -1;
+        }
+
+        // Update DOM element transform. Using translate for better performance.
+        bubble.el.style.transform =
+          'translate(' + bubble.x + 'px, ' + bubble.y + 'px)';
       });
+
       requestAnimationFrame(animate);
     }
+
     animate();
   </script>
 </body>
