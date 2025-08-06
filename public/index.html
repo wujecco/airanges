@@ -201,6 +201,23 @@
       div.style.height = size + 'px';
       div.style.background = gradient;
       div.textContent = label;
+      // Preserve the newline in the label so ticker and percentage
+      // appear on separate lines. Using `pre-line` collapses spaces
+      // but honours newline characters.
+      div.style.whiteSpace = 'pre-line';
+      // Adjust the font size based on the bubble’s diameter. We scale
+      // the font to roughly 20 % of the bubble size so that two lines
+      // of text (ticker and percentage) fit comfortably inside the
+      // circle. A minimum font size prevents text from becoming too
+      // small on very small bubbles. Without this dynamic sizing the
+      // labels could overflow or wrap outside the bubble.
+      const minFont = 12;
+      const computedFont = size * 0.20;
+      const fontSize = computedFont < minFont ? minFont : computedFont;
+      div.style.fontSize = fontSize + 'px';
+      // Use a slightly tighter line height to keep the two lines
+      // vertically centred and avoid clipping when the bubble is small.
+      div.style.lineHeight = '1.1';
       container.appendChild(div);
       return {
         el: div,
