@@ -603,6 +603,15 @@
     function animate() {
       const width = window.innerWidth;
       const height = window.innerHeight;
+      // Compute the container's offset relative to the viewport. We subtract
+      // these values from the pointer coordinates so drag calculations use
+      // positions relative to the container's coordinate system rather than
+      // the page. Without this, adding header rows causes the bubble to
+      // "jump" because mouseX/mouseY are relative to the viewport while
+      // bubble.x/bubble.y are relative to the container.
+      const containerRect = container.getBoundingClientRect();
+      const containerOffsetX = containerRect.left;
+      const containerOffsetY = containerRect.top;
 
       // Apply pairwise repulsion between all bubbles. This runs in O(n²), but
       // with 200 elements it's still performant in modern browsers. The
@@ -669,11 +678,13 @@
         // multiplier controls how quickly the bubble catches up to the
         // pointer—lower values mean more inertia.
         if (dragging && bubble === draggedBubble) {
-          // Compute the target position based on the current mouse coordinates minus
-          // the offset captured when the bubble was first clicked. This avoids using
-          // the deprecated window.event property and works across all browsers.
-          const targetX = mouseX - dragOffsetX;
-          const targetY = mouseY - dragOffsetY;
+          // Compute the target position based on the current pointer coordinates,
+          // subtracting both the original drag offset and the container's offset
+          // within the viewport. This ensures the bubble is drawn relative
+          // to its parent container even if there are header bars or other
+          // elements above it.
+          const targetX = mouseX - containerOffsetX - dragOffsetX;
+          const targetY = mouseY - containerOffsetY - dragOffsetY;
           const dx = targetX - bubble.x;
           const dy = targetY - bubble.y;
           // Apply a proportional force towards the target. Lower values result in
