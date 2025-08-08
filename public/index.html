@@ -14,6 +14,10 @@
     #bubble-container {
       position: relative;
       width: 100vw;
+            /* Disable default tch gestures so touch events are delivered to S.
+         Without this, some browses(e.g. iOS Safari) interpret touches as
+         scroll/pinch and do not dispatch touch events to the container. */
+      touch-action: none
       height: 100vh;
       overflow: hidden;
     }
@@ -385,7 +389,68 @@
     });
 
     // Track mouse movement to update the current pointer position. This ensures
-    // we always have up‑to‑date coordinates when calculating drag forces. We attach
+    
+    // --- Touch support ---
+    // On touch-enabled devices, allow dragging bubbles with a finger. These
+    // handlers mirror the mouse events above but use the first touch point
+    // instead of the mouse. Without these, bubbles could not be moved on
+    // mobile/touch screens because touch events do not trigger mouse events.
+    container.addEventListener('touchstart', function (e) {
+      // Use the first touch as the pointer. Ignore additional touches.
+      const touch = e.touches[0];
+      // Find the closest ancestor with class 'bubble'. If none is found,
+      // the touch was outside a bubble and dragging should not start.
+      const bubbleEl = e.target.closest('.bubble');
+      if (bubbleEl) {
+        const bubble = findBubbleByElement(bubbleEl);
+        if (bubble) {
+          dragging = true;
+          draggedBubble = bubble;
+          bubble.el.classList.add('dragging');
+          // Compute the offset between touch position and bubble position to
+          // maintain where inside the bubble the user touched.
+          const rect = bubble.el.getBoundingClientRect();
+          dragOffsetX = touch.clientX - rect.left;
+          dragOffsetY = touch.clientY - rect.top;
+          // Set the current mouse coordinates to the touch coordinates so
+          // the animation loop knows where to pull the bubble.
+          mouseX = touch.clientX;
+          mouseY = touch.clientY;
+          // Prevent default to avoid scrolling the page while dragging.
+          e.preventDefault();
+        }
+      }
+    }, { passive: false });
+
+    // Track touch movement to update the current pointer position. This ensures
+    // we always have up-to-date coordinates when calculating drag forces. We
+    // attach this to the container so movements outside a bubble still update
+    // the values. Without this, the bubble would not follow the finger.
+    container.addEventListener('touchmove', function (e) {
+      const touch = e.touches[0];
+      if (touch) {
+        mouseX = touch.clientX;
+        mouseY = touch.clientY;
+        // Prevent the default scrolling behaviour while dragging.
+        e.preventDefault();
+      }
+    }, { passive: false });
+
+    // Handle touch end to stop dragging. When the user lifts their finger,
+    // remove the dragging class, zero out velocity and start the cooldown
+    // period just like the mouse version. Attach to window so it fires even
+    // if the finger leaves the container.
+    window.addEventListener('touchend', function () {
+      if (dragging && draggedBubble) {
+        draggedBubble.el.classList.remove('dragging');
+        draggedBubble.vx = 0;
+        draggedBubble.vy = 0;
+        draggedBubble.releasedCooldown = 40;
+      }
+      dragging = false;
+      draggedBubble = null;
+    });
+// we always have up‑to‑date coordinates when calculating drag forces. We attach
     // this to the container so movements outside a bubble still update the values.
     container.addEventListener('mousemove', function (e) {
       mouseX = e.clientX;
