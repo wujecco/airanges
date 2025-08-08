@@ -26,26 +26,33 @@
       flex-shrink: 0;
       border-bottom: 1px solid #272a4d;
     }
+    #primary-tabs {
+      gap: 6px;
+      padding: 6px;
+    }
     #primary-tabs .tab {
       flex: 1;
-      padding: 12px 16px;
+      padding: 10px 14px;
       text-align: center;
       cursor: pointer;
-      background: transparent;
-      border: none;
+      background: #1d2336;
+      border: 1px solid #2f334d;
+      border-radius: 4px;
       outline: none;
       font-size: 16px;
-      color: #b3b7d4;
-      border-bottom: 3px solid transparent;
-      transition: color 0.2s, border-bottom-color 0.2s;
+      color: #b0b4d1;
+      transition: color 0.2s, border-color 0.2s, background-color 0.2s, box-shadow 0.2s;
     }
     #primary-tabs .tab:hover {
       color: #ffffff;
+      background-color: #252b40;
     }
     #primary-tabs .tab.active {
       color: #ffffff;
-      border-bottom-color: #5c6efc;
       font-weight: bold;
+      border-color: #32cd32;
+      background-color: #1f2738;
+      box-shadow: 0 0 6px rgba(50, 205, 50, 0.4);
     }
 
     /* Second‑level tab row for selecting the time range. */
@@ -56,26 +63,33 @@
       flex-shrink: 0;
       border-bottom: 1px solid #272a4d;
     }
+    #secondary-tabs {
+      gap: 4px;
+      padding: 4px 6px;
+    }
     #secondary-tabs .sub-tab {
       flex: 1;
-      padding: 8px 12px;
+      padding: 6px 10px;
       text-align: center;
       cursor: pointer;
-      background: transparent;
-      border: none;
+      background: #1d2336;
+      border: 1px solid #2f334d;
+      border-radius: 4px;
       outline: none;
       font-size: 14px;
       color: #888caa;
-      border-bottom: 2px solid transparent;
-      transition: color 0.2s, border-bottom-color 0.2s;
+      transition: color 0.2s, border-color 0.2s, background-color 0.2s, box-shadow 0.2s;
     }
     #secondary-tabs .sub-tab:hover {
       color: #ffffff;
+      background-color: #252b40;
     }
     #secondary-tabs .sub-tab.active {
       color: #ffffff;
-      border-bottom-color: #5c6efc;
       font-weight: bold;
+      border-color: #32cd32;
+      background-color: #1f2738;
+      box-shadow: 0 0 4px rgba(50, 205, 50, 0.4);
     }
     #bubble-container {
       position: relative;
