@@ -16,6 +16,10 @@
       width: 100vw;
       height: 100vh;
       overflow: hidden;
+    /* Disable default touch gestures so pointer events are delivered to the
+       JavaScript handlers. Without this, some browsers (e.g. Safari on iOS)
+       may interpret touches as scroll/pinch and not dispatch pointer events. */
+    touch-action: none;
     }
     .bubble {
       position: absolute;
@@ -391,6 +395,49 @@
       mouseX = e.clientX;
       mouseY = e.clientY;
     });
+
+  // --- Pointer events for touch and stylus support ---
+  // On touch‑enabled or pen devices, allow dragging bubbles with a finger or
+  // stylus. Pointer events unify mouse, touch and pen input under a single
+  // API. These handlers mirror the mouse events above but work across
+  // devices. The passive: false option on pointerdown allows calling
+  // preventDefault() to stop default behaviours like scrolling.
+  container.addEventListener('pointerdown', function (e) {
+    const bubbleEl = e.target.closest('.bubble');
+    if (bubbleEl) {
+      const bubble = findBubbleByElement(bubbleEl);
+      if (bubble) {
+        dragging = true;
+        draggedBubble = bubble;
+        bubble.el.classList.add('dragging');
+        const rect = bubble.el.getBoundingClientRect();
+        dragOffsetX = e.clientX - rect.left;
+        dragOffsetY = e.clientY - rect.top;
+        // Prevent default to stop scrolling/pinching and ensure pointer events
+        // are captured for dragging.
+        e.preventDefault();
+      }
+    }
+  }, { passive: false });
+
+  container.addEventListener('pointermove', function (e) {
+    // Update the current pointer coordinates for drag force computation. Use
+    // clientX/Y just like the mousemove handler so both input types behave
+    // consistently.
+    mouseX = e.clientX;
+    mouseY = e.clientY;
+  });
+
+  window.addEventListener('pointerup', function () {
+    if (dragging && draggedBubble) {
+      draggedBubble.el.classList.remove('dragging');
+      draggedBubble.vx = 0;
+      draggedBubble.vy = 0;
+      draggedBubble.releasedCooldown = 40;
+    }
+    dragging = false;
+    draggedBubble = null;
+  });
 
     // Handle mouse up to stop dragging.
     window.addEventListener('mouseup', function () {
