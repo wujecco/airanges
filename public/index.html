@@ -516,6 +516,19 @@
         mouseX = e.clientX;
         mouseY = e.clientY;
 
+        // Capture subsequent pointer events on the container so we continue
+        // receiving pointermove and pointerup events even if the pointer moves
+        // outside the bubble container. This helps maintain smooth dragging on
+        // touch devices when the finger crosses over the tab rows or other
+        // elements.
+        if (typeof container.setPointerCapture === 'function') {
+          try {
+            container.setPointerCapture(e.pointerId);
+          } catch (err) {
+            // ignore if capture fails (e.g. not supported)
+          }
+        }
+
         // Reset any residual velocity on the bubble when it is grabbed to avoid
         // an initial "kick" from previous motion. This mirrors the behaviour
         // implemented at pointerup/mouseup, ensuring a smooth start to the drag.
@@ -529,15 +542,25 @@
     }
   }, { passive: false });
 
-  container.addEventListener('pointermove', function (e) {
-    // Update the current pointer coordinates for drag force computation. Use
-    // clientX/Y just like the mousemove handler so both input types behave
-    // consistently.
+  // Listen for pointer movements on the window so the bubble continues to
+  // follow the pointer even if it leaves the bubble container (e.g. when
+  // crossing over the tab rows). Without this, the pointer coordinates
+  // would stop updating when moving outside the container, causing the
+  // dragged bubble to spring away from the finger on touch devices.
+  window.addEventListener('pointermove', function (e) {
     mouseX = e.clientX;
     mouseY = e.clientY;
   });
 
-  window.addEventListener('pointerup', function () {
+  window.addEventListener('pointerup', function (e) {
+    // Release pointer capture when the drag ends.
+    if (typeof container.releasePointerCapture === 'function') {
+      try {
+        container.releasePointerCapture(e.pointerId);
+      } catch (err) {
+        // ignore if release fails
+      }
+    }
     if (dragging && draggedBubble) {
       draggedBubble.el.classList.remove('dragging');
       draggedBubble.vx = 0;
