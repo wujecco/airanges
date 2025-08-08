@@ -443,6 +443,12 @@
     let mouseX = 0;
     let mouseY = 0;
 
+    // Detect if the browser supports PointerEvent. If pointer events are
+    // available, we use them for all pointer interactions and ignore the
+    // legacy mouse handlers to prevent duplicate drag logic on touch
+    // devices (which can emit both pointer and mouse events).
+    const usingPointerEvents = typeof window.PointerEvent !== 'undefined';
+
     /**
      * Find the bubble object for a given DOM element.
      * @param {HTMLElement} target
@@ -463,6 +469,7 @@
     // on text would have e.target equal to a child div, and the
     // classList check would fail.
     container.addEventListener('mousedown', function (e) {
+      if (usingPointerEvents) return;
       // Find the closest ancestor with class 'bubble'. If none is found,
       // the click was outside a bubble and dragging should not start.
       const bubbleEl = e.target.closest('.bubble');
@@ -488,6 +495,7 @@
     // we always have up‑to‑date coordinates when calculating drag forces. We attach
     // this to the container so movements outside a bubble still update the values.
     container.addEventListener('mousemove', function (e) {
+      if (usingPointerEvents) return;
       mouseX = e.clientX;
       mouseY = e.clientY;
     });
@@ -573,6 +581,7 @@
 
     // Handle mouse up to stop dragging.
     window.addEventListener('mouseup', function () {
+      if (usingPointerEvents) return;
       if (dragging && draggedBubble) {
         draggedBubble.el.classList.remove('dragging');
         // When dragging ends, zero out the bubble's velocity and start a
