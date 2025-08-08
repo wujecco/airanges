@@ -9,17 +9,85 @@
       margin: 0;
       background: #0d0f23;
       font-family: Arial, sans-serif;
+      /* Use flexbox so the header tabs and bubble container stack vertically
+         and the container can fill the remaining height. */
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
       overflow: hidden;
+    }
+
+    /* Top‑level tab row for selecting the asset class (stocks or crypto). */
+    #primary-tabs {
+      display: flex;
+      background: #111430;
+      color: #ffffff;
+      /* Ensure the tabs don't shrink below their content. */
+      flex-shrink: 0;
+      border-bottom: 1px solid #272a4d;
+    }
+    #primary-tabs .tab {
+      flex: 1;
+      padding: 12px 16px;
+      text-align: center;
+      cursor: pointer;
+      background: transparent;
+      border: none;
+      outline: none;
+      font-size: 16px;
+      color: #b3b7d4;
+      border-bottom: 3px solid transparent;
+      transition: color 0.2s, border-bottom-color 0.2s;
+    }
+    #primary-tabs .tab:hover {
+      color: #ffffff;
+    }
+    #primary-tabs .tab.active {
+      color: #ffffff;
+      border-bottom-color: #5c6efc;
+      font-weight: bold;
+    }
+
+    /* Second‑level tab row for selecting the time range. */
+    #secondary-tabs {
+      display: flex;
+      background: #161a40;
+      color: #ccccdd;
+      flex-shrink: 0;
+      border-bottom: 1px solid #272a4d;
+    }
+    #secondary-tabs .sub-tab {
+      flex: 1;
+      padding: 8px 12px;
+      text-align: center;
+      cursor: pointer;
+      background: transparent;
+      border: none;
+      outline: none;
+      font-size: 14px;
+      color: #888caa;
+      border-bottom: 2px solid transparent;
+      transition: color 0.2s, border-bottom-color 0.2s;
+    }
+    #secondary-tabs .sub-tab:hover {
+      color: #ffffff;
+    }
+    #secondary-tabs .sub-tab.active {
+      color: #ffffff;
+      border-bottom-color: #5c6efc;
+      font-weight: bold;
     }
     #bubble-container {
       position: relative;
-      width: 100vw;
-      height: 100vh;
+      width: 100%;
+      /* Use flex-grow to fill the remaining height of the viewport beneath
+         the tab rows. Height will adjust automatically. */
+      flex: 1;
       overflow: hidden;
-    /* Disable default touch gestures so pointer events are delivered to the
-       JavaScript handlers. Without this, some browsers (e.g. Safari on iOS)
-       may interpret touches as scroll/pinch and not dispatch pointer events. */
-    touch-action: none;
+      /* Disable default touch gestures so pointer events are delivered to the
+         JavaScript handlers. Without this, some browsers (e.g. Safari on iOS)
+         may interpret touches as scroll/pinch and not dispatch pointer events. */
+      touch-action: none;
     }
     .bubble {
       position: absolute;
@@ -43,6 +111,20 @@
   </style>
 </head>
 <body>
+  <!-- Primary tab row: select between Stocks and Crypto -->
+  <div id="primary-tabs">
+    <button class="tab active" data-tab="stocks">AI Stocks</button>
+    <button class="tab" data-tab="crypto">AI Crypto</button>
+  </div>
+  <!-- Secondary tab row: select the time range. Not functional yet. -->
+  <div id="secondary-tabs">
+    <button class="sub-tab" data-range="hour">godzina</button>
+    <button class="sub-tab active" data-range="day">dzień</button>
+    <button class="sub-tab" data-range="week">tydzień</button>
+    <button class="sub-tab" data-range="month">miesiąc</button>
+    <button class="sub-tab" data-range="year">rok</button>
+  </div>
+  <!-- Bubble container fills the remaining vertical space. -->
   <div id="bubble-container"></div>
   <script>
     /**
@@ -615,6 +697,34 @@
     // awaiting here, the browser continues to parse and event handlers
     // are attached immediately.
     loadStockData();
+
+    // ------------------------------------------------------------
+    // Tab handling: highlight the selected tab and sub‑tab. The primary
+    // tabs (AI Stocks and AI Crypto) currently show the same content but
+    // are styled to indicate which is active. The secondary tabs
+    // (godzina, dzień, tydzień, miesiąc, rok) likewise update their
+    // active state when clicked. Additional logic to load different
+    // datasets or adjust the time range can be added here in future.
+    (function initTabs() {
+      const primaryTabs = document.querySelectorAll('#primary-tabs .tab');
+      primaryTabs.forEach((tab) => {
+        tab.addEventListener('click', function () {
+          const current = document.querySelector('#primary-tabs .active');
+          if (current) current.classList.remove('active');
+          this.classList.add('active');
+          // TODO: Switch datasets or views based on data‑tab attribute.
+        });
+      });
+      const secondaryTabs = document.querySelectorAll('#secondary-tabs .sub-tab');
+      secondaryTabs.forEach((tab) => {
+        tab.addEventListener('click', function () {
+          const current = document.querySelector('#secondary-tabs .active');
+          if (current) current.classList.remove('active');
+          this.classList.add('active');
+          // TODO: Update time range for charts/data.
+        });
+      });
+    })();
   </script>
 </body>
 </html>
