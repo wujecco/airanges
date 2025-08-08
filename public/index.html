@@ -413,6 +413,19 @@
         const rect = bubble.el.getBoundingClientRect();
         dragOffsetX = e.clientX - rect.left;
         dragOffsetY = e.clientY - rect.top;
+        // Capture the current pointer position immediately when grabbing the bubble
+        // so the inertial force calculation starts from the touch point rather than
+        // waiting for the first pointermove. Without this, the bubble may jerk
+        // abruptly towards the last recorded mouse position on touch devices.
+        mouseX = e.clientX;
+        mouseY = e.clientY;
+
+        // Reset any residual velocity on the bubble when it is grabbed to avoid
+        // an initial "kick" from previous motion. This mirrors the behaviour
+        // implemented at pointerup/mouseup, ensuring a smooth start to the drag.
+        bubble.vx = 0;
+        bubble.vy = 0;
+
         // Prevent default to stop scrolling/pinching and ensure pointer events
         // are captured for dragging.
         e.preventDefault();
