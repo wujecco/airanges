@@ -47,6 +47,13 @@ app.get('/api/sp500', async (req, res) => {
     return res.status(500).json({ error: 'INTRINIO_API_KEY is not configured on the server.' });
   }
 
+  // Determine which price frequency to request based on the ?range
+  // query parameter. Only "week" is handled explicitly at the
+  // moment; all other values default to daily data so existing
+  // behaviour is preserved for hour/day/month/year tabs.
+  const range = req.query.range;
+  const frequency = range === 'week' ? 'weekly' : 'daily';
+
   /**
    * Fetch the HTML for the S&P 500 components page and extract up to 100
    * ticker symbols. The page lists companies in order of index weight.
@@ -84,19 +91,20 @@ app.get('/api/sp500', async (req, res) => {
 
   try {
     const tickers = await getTopTickers();
-    // For each ticker, fetch the two most recent daily price records (close-to-close).
-    // The Intrinio daily price endpoint returns a list of stock_prices entries
-    // ordered by date. By requesting page_size=2 and sort_order=desc, the first
-    // entry is the latest close and the second is the previous day’s close. We
-    // compute the percent change as (latest.close - prev.close) / prev.close * 100.
-    // We return the latest close as the price. If either record is missing,
-    // changePercent and price may be null. This removes reliance on realtime data
-    // and ensures bubbles reflect end-of-day performance.
+    // For each ticker, fetch the two most recent price records for the
+    // requested frequency (daily or weekly). By requesting
+    // page_size=2 and sort_order=desc, the first entry is the latest
+    // close and the second is the previous period’s close. We compute
+    // the percent change as (latest.close - prev.close) / prev.close * 100.
+    // We return the latest close as the price. If either record is
+    // missing, changePercent and price may be null. This removes
+    // reliance on realtime data and ensures bubbles reflect end-of-day
+    // or end-of-week performance.
     const pricePromises = tickers.map(async (ticker) => {
-      const dailyUrl =
-        `https://api-v2.intrinio.com/securities/${ticker}/prices?frequency=daily&page_size=2&sort_order=desc&api_key=${apiKey}`;
+      const url =
+        `https://api-v2.intrinio.com/securities/${ticker}/prices?frequency=${frequency}&page_size=2&sort_order=desc&api_key=${apiKey}`;
       try {
-        const resp = await fetch(dailyUrl);
+        const resp = await fetch(url);
         if (!resp.ok) {
           return { ticker, price: null, changePercent: null };
         }
