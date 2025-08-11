@@ -1,0 +1,232 @@
+diff --git a/public/js/bubbles.js b/public/js/bubbles.js
+index 13b3ba5ebd54f7982ac9d8d102b4970ad7be4ee8..176ed4cf0f18034aa0a406bc9a3609a8c8d2ce09 100644
+--- a/public/js/bubbles.js
++++ b/public/js/bubbles.js
+@@ -1,46 +1,51 @@
+     /**
+      * This script implements an interactive bubble field.
+      *
+      * Key changes from the original version:
+      *  - The number of bubbles has been increased from the original but
+      *    reduced from the previous version to around 150 for better
+      *    readability and performance.
+      *  - Bubbles spawn randomly across the screen (rather than in a tight
+      *    cluster) and repel each other to settle into an even distribution.
+      *  - Pairwise repulsion runs each frame to prevent overlaps and, in
+      *    combination with random initial velocities, provides a gentle drift.
+      *  - Mouse interaction is rewritten: bubbles no longer flee from the
+      *    pointer; instead you can click and drag any bubble. Dragging applies
+      *    a proportional force so the bubble chases your pointer with some
+      *    inertia. While dragging, the bubble still repels others, pushing
+      *    them aside naturally. Releasing a bubble dampens its velocity to
+      *    avoid jittery oscillations.
+      */
+ 
+     const container = document.getElementById('bubble-container');
+     const bubbles = [];
++    // Track whether the animation loop has been started to avoid creating
++    // multiple loops when new data is loaded.
++    let animationStarted = false;
++    // Current range for which data is displayed. Defaults to daily changes.
++    let currentRange = 'day';
+         // Number of bubbles to display. This value is replaced once we load
+         // S&P 500 constituents from the server. Defaults to 100 if the
+         // request fails.
+         let numBubbles = 100;
+ 
+         // Track the maximum absolute percent change across all stocks. This is
+         // used to scale bubble sizes proportionally so that the largest
+         // percentage change corresponds to the largest bubble. It will be
+         // computed once stock data is loaded.
+         let maxAbsChange = 1;
+ 
+     // When stock data is loaded from the server, it will be stored here.
+     let stockData = null;
+     // Base strength of inter‑bubble repulsion. A modest value causes bubbles
+     // to separate gently without an explosive "blow‑apart" effect.  When a
+     // bubble is actively dragged the repulsion force is temporarily
+     // multiplied (see dragRepulsionMultiplier below) so that the dragged
+     // bubble can more effectively push others aside. This base value
+     // deliberately matches the earlier behaviour so un‑dragged bubbles
+     // settle calmly.
+     // Base repulsion strength between bubbles. Increasing this value will
+     // make bubbles push each other apart more strongly. We slightly
+     // increase it compared to the previous tuning to help dragged
+     // bubbles clear a path through the field.
+     const repulsionStrength = 0.08;
+diff --git a/public/js/bubbles.js b/public/js/bubbles.js
+index 13b3ba5ebd54f7982ac9d8d102b4970ad7be4ee8..176ed4cf0f18034aa0a406bc9a3609a8c8d2ce09 100644
+--- a/public/js/bubbles.js
++++ b/public/js/bubbles.js
+@@ -231,84 +236,94 @@
+         releasedCooldown: 0
+       };
+     }
+ 
+     // Populate the bubbles array.
+     // In the stock mode we defer populating the bubbles until after
+     // fetching data from the server. The `loadStockData` function will
+     // build bubbles based on the downloaded data. If fetching fails,
+     // this fallback block will be used to populate with random values.
+     function populateFallback() {
+       for (let i = 0; i < numBubbles; i++) {
+         bubbles.push(createBubble());
+       }
+     }
+ 
+     /**
+      * Fetch the S&P 500 constituents and their realtime prices from our
+      * server. The server proxies the Intrinio API and reads the API
+      * key from an environment variable so the key remains secret. On
+      * success, this will assign `stockData` and update `numBubbles` to
+      * the length of the returned array. Then it will create bubbles
+      * using each stock entry. If the fetch fails (e.g. due to
+      * network/authorization errors), it will fall back to creating
+      * random bubbles.
+      */
+-    async function loadStockData() {
++    async function loadStockData(range = 'day') {
+       try {
+-        const response = await fetch('/api/sp500');
++        const response = await fetch(`/api/sp500?range=${range}`);
+         if (!response.ok) {
+           throw new Error('Failed to fetch SP500 data');
+         }
+         const data = await response.json();
+         // Use the returned array of {ticker, price} objects.
+         stockData = Array.isArray(data) ? data : null;
+         if (stockData && stockData.length > 0) {
+           numBubbles = stockData.length;
+           // Compute the maximum absolute change once so sizes are scaled
+           // proportionally. Avoid division by zero by defaulting to 1 if all
+           // values are zero or undefined.
+           let maxVal = 0;
+           for (const s of stockData) {
+             const cp = Math.abs(s.changePercent || 0);
+             if (cp > maxVal) maxVal = cp;
+           }
+           maxAbsChange = maxVal > 0 ? maxVal : 1;
+           for (let i = 0; i < numBubbles; i++) {
+             bubbles.push(createBubble(stockData[i]));
+           }
+         } else {
+           // Fallback to random bubbles if data is empty.
+           populateFallback();
+         }
+       } catch (err) {
+         console.error(err);
+         // Populate with random bubbles if an error occurs.
+         populateFallback();
+       }
+-      // Start the animation once bubbles are created.
+-      animate();
++      // Start the animation once bubbles are created. Only trigger the
++      // loop the first time data is loaded.
++      if (!animationStarted) {
++        animationStarted = true;
++        animate();
++      }
++    }
++
++    // Remove all existing bubbles from the DOM so new data can be loaded.
++    function resetBubbles() {
++      bubbles.length = 0;
++      container.innerHTML = '';
+     }
+ 
+     // Variables to track dragging state.
+     let dragging = false;
+     let draggedBubble = null;
+     let dragOffsetX = 0;
+     let dragOffsetY = 0;
+     // Track the current mouse coordinates. These values are updated on every
+     // mousemove event so we always know where the pointer is. Without this, using
+     // window.event in the animation loop would not work reliably.
+     let mouseX = 0;
+     let mouseY = 0;
+ 
+     // Detect if the browser supports PointerEvent. If pointer events are
+     // available, we use them for all pointer interactions and ignore the
+     // legacy mouse handlers to prevent duplicate drag logic on touch
+     // devices (which can emit both pointer and mouse events).
+     const usingPointerEvents = typeof window.PointerEvent !== 'undefined';
+ 
+     /**
+      * Find the bubble object for a given DOM element.
+      * @param {HTMLElement} target
+      * @returns {object|null}
+      */
+     function findBubbleByElement(target) {
+diff --git a/public/js/bubbles.js b/public/js/bubbles.js
+index 13b3ba5ebd54f7982ac9d8d102b4970ad7be4ee8..176ed4cf0f18034aa0a406bc9a3609a8c8d2ce09 100644
+--- a/public/js/bubbles.js
++++ b/public/js/bubbles.js
+@@ -584,58 +599,61 @@
+         if (bubble.x < 0) {
+           bubble.x = 0;
+           bubble.vx *= -1;
+         }
+         if (bubble.x + bubble.size > width) {
+           bubble.x = width - bubble.size;
+           bubble.vx *= -1;
+         }
+         if (bubble.y < 0) {
+           bubble.y = 0;
+           bubble.vy *= -1;
+         }
+         if (bubble.y + bubble.size > height) {
+           bubble.y = height - bubble.size;
+           bubble.vy *= -1;
+         }
+ 
+         // Update DOM element transform. Using translate for better performance.
+         bubble.el.style.transform =
+           'translate(' + bubble.x + 'px, ' + bubble.y + 'px)';
+       });
+ 
+       requestAnimationFrame(animate);
+     }
+ 
+-    // Kick off the data loading process. This will populate the
+-    // `bubbles` array and start the animation when complete. Without
+-    // awaiting here, the browser continues to parse and event handlers
+-    // are attached immediately.
+-    loadStockData();
++    // Kick off the data loading process for the default range (day). This will
++    // populate the `bubbles` array and start the animation when complete.
++    // Without awaiting here, the browser continues to parse and event
++    // handlers are attached immediately.
++    loadStockData(currentRange);
+ 
+     // ------------------------------------------------------------
+     // Tab handling: highlight the selected tab and sub‑tab. The primary
+     // tabs (AI Stocks and AI Crypto) currently show the same content but
+     // are styled to indicate which is active. The secondary tabs
+     // (godzina, dzień, tydzień, miesiąc, rok) likewise update their
+     // active state when clicked. Additional logic to load different
+     // datasets or adjust the time range can be added here in future.
+     (function initTabs() {
+       const primaryTabs = document.querySelectorAll('#primary-tabs .tab');
+       primaryTabs.forEach((tab) => {
+         tab.addEventListener('click', function () {
+           const current = document.querySelector('#primary-tabs .active');
+           if (current) current.classList.remove('active');
+           this.classList.add('active');
+           // TODO: Switch datasets or views based on data‑tab attribute.
+         });
+       });
+       const secondaryTabs = document.querySelectorAll('#secondary-tabs .sub-tab');
+       secondaryTabs.forEach((tab) => {
+         tab.addEventListener('click', function () {
+           const current = document.querySelector('#secondary-tabs .active');
+           if (current) current.classList.remove('active');
+           this.classList.add('active');
+-          // TODO: Update time range for charts/data.
++          const range = this.getAttribute('data-range');
++          currentRange = range;
++          resetBubbles();
++          loadStockData(range);
+         });
+       });
+     })();
+ 

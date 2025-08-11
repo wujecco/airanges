@@ -19,6 +19,11 @@
 
     const container = document.getElementById('bubble-container');
     const bubbles = [];
+    // Track whether the animation loop has been started to avoid creating
+    // multiple loops when new data is loaded.
+    let animationStarted = false;
+    // Current range for which data is displayed. Defaults to daily changes.
+    let currentRange = 'day';
         // Number of bubbles to display. This value is replaced once we load
         // S&P 500 constituents from the server. Defaults to 100 if the
         // request fails.
@@ -253,9 +258,9 @@
      * network/authorization errors), it will fall back to creating
      * random bubbles.
      */
-    async function loadStockData() {
+    async function loadStockData(range = 'day') {
       try {
-        const response = await fetch('/api/sp500');
+        const response = await fetch(`/api/sp500?range=${range}`);
         if (!response.ok) {
           throw new Error('Failed to fetch SP500 data');
         }
@@ -285,8 +290,18 @@
         // Populate with random bubbles if an error occurs.
         populateFallback();
       }
-      // Start the animation once bubbles are created.
-      animate();
+      // Start the animation once bubbles are created. Only trigger the
+      // loop the first time data is loaded.
+      if (!animationStarted) {
+        animationStarted = true;
+        animate();
+      }
+    }
+
+    // Remove all existing bubbles from the DOM so new data can be loaded.
+    function resetBubbles() {
+      bubbles.length = 0;
+      container.innerHTML = '';
     }
 
     // Variables to track dragging state.
@@ -606,11 +621,11 @@
       requestAnimationFrame(animate);
     }
 
-    // Kick off the data loading process. This will populate the
-    // `bubbles` array and start the animation when complete. Without
-    // awaiting here, the browser continues to parse and event handlers
-    // are attached immediately.
-    loadStockData();
+    // Kick off the data loading process for the default range (day). This will
+    // populate the `bubbles` array and start the animation when complete.
+    // Without awaiting here, the browser continues to parse and event
+    // handlers are attached immediately.
+    loadStockData(currentRange);
 
     // ------------------------------------------------------------
     // Tab handling: highlight the selected tab and sub‑tab. The primary
@@ -635,7 +650,10 @@
           const current = document.querySelector('#secondary-tabs .active');
           if (current) current.classList.remove('active');
           this.classList.add('active');
-          // TODO: Update time range for charts/data.
+          const range = this.getAttribute('data-range');
+          currentRange = range;
+          resetBubbles();
+          loadStockData(range);
         });
       });
     })();
