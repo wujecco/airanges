@@ -43,8 +43,20 @@ app.use(express.static(path.join(__dirname, 'public')));
  */
 app.get('/api/sp500', async (req, res) => {
   const apiKey = process.env.INTRINIO_API_KEY;
-  if (!apiKey) {
-    return res.status(500).json({ error: 'INTRINIO_API_KEY is not configured on the server.' });
+  
+if (!apiKey) {
+    return res.status(500).json({ error: 'INTRINIO_API_KEY is not configured on the server.' }
+
+  // Determine the requested range. Default to day if not specified.
+  const range = req.query.range === "week" ? "week" : "day";
+  // For weekly changes we need the latest close plus the close from roughly
+  // five trading days prior. Request six records to account for weekends and
+  // holidays so the sixth entry represents the price a week ago.
+  const pageSize = range === "week" ? 6 : 2;
+  // Index of the comparison record within the returned stock_prices array.
+  const compareIndex = range === "week" ? 5 : 1;
+
+);
   }
 
   /**
@@ -86,7 +98,7 @@ app.get('/api/sp500', async (req, res) => {
     const tickers = await getTopTickers();
     // For each ticker, fetch the two most recent daily price records (close-to-close).
     // The Intrinio daily price endpoint returns a list of stock_prices entries
-    // ordered by date. By requesting page_size=2 and sort_order=desc, the first
+    // ordered by date. By requesting page_size=${pageSize} and sort_order=desc, the first
     // entry is the latest close and the second is the previous day’s close. We
     // compute the percent change as (latest.close - prev.close) / prev.close * 100.
     // We return the latest close as the price. If either record is missing,
@@ -94,7 +106,7 @@ app.get('/api/sp500', async (req, res) => {
     // and ensures bubbles reflect end-of-day performance.
     const pricePromises = tickers.map(async (ticker) => {
       const dailyUrl =
-        `https://api-v2.intrinio.com/securities/${ticker}/prices?frequency=daily&page_size=2&sort_order=desc&api_key=${apiKey}`;
+        `https://api-v2.intrinio.com/securities/${ticker}/prices?frequency=daily&page_size=${pageSize}&sort_order=desc&api_key=${apiKey}`;
       try {
         const resp = await fetch(dailyUrl);
         if (!resp.ok) {
@@ -105,7 +117,7 @@ app.get('/api/sp500', async (req, res) => {
           return { ticker, price: null, changePercent: null };
         }
         const latest = data.stock_prices[0];
-        const prev = data.stock_prices.length > 1 ? data.stock_prices[1] : null;
+        const prev = data.stock_prices.length > compareIndex ? data.stock_prices[compareIndex] : null;
         const price = latest.close ?? null;
         let changePercent = null;
         if (prev && prev.close != null && prev.close !== 0 && latest.close != null) {
