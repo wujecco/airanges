@@ -45,7 +45,7 @@ app.get('/api/sp500', async (req, res) => {
   const apiKey = process.env.INTRINIO_API_KEY;
   
 if (!apiKey) {
-    return res.status(500).json({ error: 'INTRINIO_API_KEY is not configured on the server.' }
+    return res.status(500).json({ error: 'INTRINIO_API_KEY is not configured on the server.' });
 
   // Determine the requested range. Default to day if not specified.
   const range = req.query.range === "week" ? "week" : "day";
