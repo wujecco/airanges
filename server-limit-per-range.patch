@@ -1,23 +1,21 @@
-cat > server-limit10.patch <<'PATCH'
+cat > server-limit-per-range.patch <<'PATCH'
 diff --git a/server.js b/server.js
 new file mode 100644
 index 0000000..1111111
 --- /dev/null
 +++ b/server.js
-@@ -0,0 +170 @@
+@@ -0,0 +210 @@
 +'use strict';
 +const express = require('express');
 +const path = require('path');
 +
-+// Node 18+ ma globalny fetch; fallback dla starszych
++// Node 18+ ma wbudowany fetch; fallback dla starszych
 +const fetch = global.fetch ? global.fetch : ((...args) => import('node-fetch').then(({ default: f }) => f(...args)));
 +
 +const app = express();
 +const PORT = process.env.PORT || 3000;
-+const MAX_TICKERS = 10;       // <<< tylko 10 bąbli
-+const CONCURRENCY = 10;       // <<< równolegle max 10 żądań
 +
-+// Static
++// Statyczne + health
 +app.use(express.static(path.join(__dirname, 'public')));
 +app.get('/', (_req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
 +app.get('/api/health', (_req, res) => res.json({ ok: true }));
@@ -32,19 +30,19 @@ index 0000000..1111111
 +  return { date: `${p.year}-${p.month}-${p.day}`, time: `${p.hour}:${p.minute}:${p.second}` };
 +}
 +
-+// TOP 10 z SlickCharts
-+async function getTopTickers() {
++// TOP tickery z SlickCharts — pobieramy dokladnie 'limit'
++async function getTopTickers(limit) {
 +  const resp = await fetch('https://www.slickcharts.com/sp500', { headers: { 'User-Agent': 'airanges/1.0' } });
 +  if (!resp.ok) throw new Error(`SlickCharts HTTP ${resp.status}`);
 +  const html = await resp.text();
 +  const rx = /\/symbol\/([A-Za-z\.]+)"/g;
 +  const out = []; const seen = new Set(); let m;
-+  while ((m = rx.exec(html)) && out.length < MAX_TICKERS) {
++  while ((m = rx.exec(html)) && out.length < limit) {
 +    const t = m[1];
 +    if (!seen.has(t)) { seen.add(t); out.push(t); }
 +  }
 +  if (!out.length) throw new Error('No S&P500 tickers scraped');
-+  return out.slice(0, MAX_TICKERS);
++  return out.slice(0, limit);
 +}
 +
 +// EOD historia z paginacją (desc)
@@ -110,14 +108,18 @@ index 0000000..1111111
 +app.get('/api/sp500', async (req, res) => {
 +  const apiKey = process.env.INTRINIO_API_KEY;
 +  if (!apiKey) return res.status(500).json({ error: 'INTRINIO_API_KEY missing' });
++
 +  const range = (req.query.range || 'day').toLowerCase();
++  const limitParam = parseInt(req.query.limit, 10);
++  const LIMIT = Math.max(1, Math.min(100, Number.isFinite(limitParam) ? limitParam : 10)); // domyślnie 10
++  const CONCURRENCY = Math.min(LIMIT, 10);
 +  const compareMap = { day: 1, week: 5, month: 21, year: 252 };
 +
 +  try {
-+    const tickers = await getTopTickers(); // będzie dokładnie 10
++    const tickers = await getTopTickers(LIMIT); // << tylko LIMIT spółek
 +    const out = [];
++
 +    if (range === 'hour') {
-+      // małe batch'e — max 10 równolegle
 +      for (let i = 0; i < tickers.length; i += CONCURRENCY) {
 +        // eslint-disable-next-line no-await-in-loop
 +        out.push(...await Promise.all(tickers.slice(i, i + CONCURRENCY).map(t => hourlyFrom15m(t, apiKey))));
@@ -139,5 +141,5 @@ index 0000000..1111111
 +// Fallback
 +app.get('*', (_req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
 +
-+app.listen(PORT, () => console.log(`[airanges] listening on :${PORT} (top ${MAX_TICKERS})`));
++app.listen(PORT, () => console.log(`[airanges] listening on :${PORT}`));
 PATCH
