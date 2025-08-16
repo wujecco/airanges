@@ -1,102 +1,139 @@
+'use strict';
 const express = require('express');
 const path = require('path');
 
-// fetch w CommonJS przez dynamiczny import
-const fetch = (...args) => import('node-fetch').then(({ default: fetch }) => fetch(...args));
+// Node 18+ ma globalny fetch; fallback dla starszych
+const fetch = global.fetch ? global.fetch : ((...args) => import('node-fetch').then(({ default: f }) => f(...args)));
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Serwuj pliki statyczne z katalogu public
+// Statyczne + health
 app.use(express.static(path.join(__dirname, 'public')));
+app.get('/', (_req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
+app.get('/api/health', (_req, res) => res.json({ ok: true }));
 
-/**
- * GET /api/sp500
- *
- * Zwraca dane dla ~100 spółek S&P 500.
- * Obsługuje parametry:
- *   ?range=day  – zmiana względem poprzedniego dnia (domyślnie)
- *   ?range=week – zmiana względem ceny sprzed tygodnia
- */
+// ===== Helpers =====
+function nyFormat(d, tz = 'America/New_York') {
+  const p = new Intl.DateTimeFormat('en-CA', {
+    timeZone: tz, hour12: false,
+    year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', second: '2-digit'
+  }).formatToParts(d).reduce((a, q) => (a[q.type] = q.value, a), {});
+  return { date: `${p.year}-${p.month}-${p.day}`, time: `${p.hour}:${p.minute}:${p.second}` };
+}
+
+// TOP tickery z SlickCharts — zwracamy dokładnie `limit`
+async function getTopTickers(limit) {
+  const resp = await fetch('https://www.slickcharts.com/sp500', { headers: { 'User-Agent': 'airanges/1.0' } });
+  if (!resp.ok) throw new Error(`SlickCharts HTTP ${resp.status}`);
+  const html = await resp.text();
+  const rx = /\/symbol\/([A-Za-z\.]+)"/g;
+  const out = []; const seen = new Set(); let m;
+  while ((m = rx.exec(html)) && out.length < limit) {
+    const t = m[1];
+    if (!seen.has(t)) { seen.add(t); out.push(t); }
+  }
+  if (!out.length) throw new Error('No S&P500 tickers scraped');
+  return out.slice(0, limit);
+}
+
+// EOD historia z paginacją (desc)
+async function fetchEodHistory(ticker, needed, apiKey) {
+  const all = [];
+  let next = null;
+  const pageSize = 100;
+  do {
+    const url = `https://api-v2.intrinio.com/securities/${encodeURIComponent(ticker)}/prices` +
+      `?sort_order=desc&page_size=${pageSize}` + (next ? `&next_page=${encodeURIComponent(next)}` : ``) +
+      `&api_key=${apiKey}`;
+    const r = await fetch(url);
+    if (!r.ok) break;
+    const j = await r.json();
+    const rows = Array.isArray(j.stock_prices) ? j.stock_prices : [];
+    all.push(...rows);
+    next = j.next_page || null;
+  } while (all.length < needed + 1 && next);
+  return all;
+}
+
+// Hour: ostatnia dostępna zmiana z 15m barów (okno 60 min)
+async function hourlyFrom15m(ticker, apiKey) {
+  try {
+    const end = new Date(), start = new Date(end.getTime() - 60*60*1000);
+    const s = nyFormat(start), e = nyFormat(end);
+    const url = `https://api-v2.intrinio.com/securities/${encodeURIComponent(ticker)}/prices/intervals` +
+      `?interval_size=15m&source=delayed&timezone=America/New_York` +
+      `&start_date=${s.date}&start_time=${s.time}&end_date=${e.date}&end_time=${e.time}` +
+      `&split_adjusted=false&include_quote_only_bars=false&page_size=10&api_key=${apiKey}`;
+    const r = await fetch(url);
+    if (!r.ok) return { ticker, price: null, changePercent: null };
+    const j = await r.json();
+    const arr = Array.isArray(j.intervals) ? j.intervals : [];
+    const last = arr.length ? arr[arr.length-1] : null;
+    const price = last && typeof last.close === 'number' ? last.close : null;
+    let changePercent = null;
+    for (let i = arr.length-1; i >= 0; i--) {
+      const v = arr[i];
+      if (v && typeof v.change === 'number' && isFinite(v.change)) { changePercent = v.change * 100; break; }
+    }
+    return { ticker, price, changePercent };
+  } catch { return { ticker, price: null, changePercent: null }; }
+}
+
+// EOD: porównanie do 1/5/21/252 sesji wstecz (z historią stronicowaną)
+async function eodChangeByIndex(ticker, idx, apiKey) {
+  try {
+    const hist = await fetchEodHistory(ticker, idx, apiKey);
+    if (!hist.length) return { ticker, price: null, changePercent: null };
+    const latest = hist[0];
+    const prev = hist.length > idx ? hist[idx] : hist[hist.length - 1];
+    const price = (latest && typeof latest.close === 'number') ? latest.close : null;
+    let changePercent = null;
+    if (prev && typeof prev.close === 'number' && prev.close && typeof price === 'number') {
+      changePercent = ((price - prev.close) / prev.close) * 100;
+    }
+    return { ticker, price, changePercent };
+  } catch { return { ticker, price: null, changePercent: null }; }
+}
+
+// ===== API =====
 app.get('/api/sp500', async (req, res) => {
   const apiKey = process.env.INTRINIO_API_KEY;
-  if (!apiKey) {
-    return res.status(500).json({ error: 'INTRINIO_API_KEY is not configured on the server.' });
-  }
+  if (!apiKey) return res.status(500).json({ error: 'INTRINIO_API_KEY missing' });
 
-  // Ustal parametry na podstawie range
-  const range = req.query.range === 'week' ? 'week' : 'day';
-  const pageSize = range === 'week' ? 6 : 2;       // liczba rekordów do pobrania
-  const compareIndex = range === 'week' ? 5 : 1;   // indeks rekordu do porównania
-
-  // Pobierz listę tickerów z slickcharts.com
-  async function getTopTickers() {
-    const url = 'https://www.slickcharts.com/sp500';
-    const response = await fetch(url);
-    if (!response.ok) {
-      throw new Error(`Failed to fetch tickers from ${url}: ${response.statusText}`);
-    }
-    const html = await response.text();
-    const regex = /\/symbol\/([A-Za-z\.]+)"/g;
-
-    const tickers = [];
-    const seen = new Set();
-    let match;
-    while ((match = regex.exec(html)) !== null && tickers.length < 100) {
-      const ticker = match[1];
-      if (!seen.has(ticker)) {
-        seen.add(ticker);
-        tickers.push(ticker);
-      }
-    }
-    return tickers;
-  }
+  const range = (req.query.range || 'day').toLowerCase();
+  const limitParam = parseInt(req.query.limit, 10);
+  const LIMIT = Math.max(1, Math.min(100, Number.isFinite(limitParam) ? limitParam : 10)); // domyślnie 10
+  const CONCURRENCY = Math.min(LIMIT, 10);
+  const compareMap = { day: 1, week: 5, month: 21, year: 252 };
 
   try {
-    const tickers = await getTopTickers();
+    const tickers = await getTopTickers(LIMIT); // <<< tylko LIMIT spółek
+    const out = [];
 
-    const pricePromises = tickers.map(async (ticker) => {
-      const url = `https://api-v2.intrinio.com/securities/${ticker}/prices?frequency=daily&page_size=${pageSize}&sort_order=desc&api_key=${apiKey}`;
-      try {
-        const resp = await fetch(url);
-        if (!resp.ok) return { ticker, price: null, changePercent: null };
-
-        const data = await resp.json();
-        if (!data || !Array.isArray(data.stock_prices) || data.stock_prices.length === 0) {
-          return { ticker, price: null, changePercent: null };
-        }
-
-        const latest = data.stock_prices[0];
-        const prev = data.stock_prices.length > compareIndex ? data.stock_prices[compareIndex] : null;
-
-        const price = latest.close ?? null;
-        let changePercent = null;
-
-        if (prev && prev.close != null && prev.close !== 0 && latest.close != null) {
-          changePercent = ((latest.close - prev.close) / prev.close) * 100;
-        } else if (latest.percent_change !== undefined && latest.percent_change !== null) {
-          changePercent = latest.percent_change;
-        }
-
-        return { ticker, price, changePercent };
-      } catch {
-        return { ticker, price: null, changePercent: null };
+    if (range === 'hour') {
+      for (let i = 0; i < tickers.length; i += CONCURRENCY) {
+        // eslint-disable-next-line no-await-in-loop
+        out.push(...await Promise.all(tickers.slice(i, i + CONCURRENCY).map(t => hourlyFrom15m(t, apiKey))));
       }
-    });
+    } else {
+      const idx = compareMap[range] ?? 1;
+      for (let i = 0; i < tickers.length; i += CONCURRENCY) {
+        // eslint-disable-next-line no-await-in-loop
+        out.push(...await Promise.all(tickers.slice(i, i + CONCURRENCY).map(t => eodChangeByIndex(t, idx, apiKey))));
+      }
+    }
 
-    const prices = await Promise.all(pricePromises);
-    res.json(prices);
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: err.message || 'Unexpected error fetching SP500 data' });
+    // bezpieczeństwo: twarde przycięcie do LIMIT
+    res.json(out.filter(x => x && x.ticker).slice(0, LIMIT));
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: e.message || 'Failed to build S&P500 data' });
   }
 });
 
-// Fallback na index.html
-app.get('*', (req, res) => {
-  res.sendFile(path.join(__dirname, 'public', 'index.html'));
-});
+// Fallback
+app.get('*', (_req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
 
-app.listen(PORT, () => {
-  console.log(`Server is running on port ${PORT}`);
-});
+app.listen(PORT, () => console.log(`[airanges] listening on :${PORT}`));
