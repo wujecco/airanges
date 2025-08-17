@@ -657,3 +657,28 @@
         });
       });
     })();
+
+/**
+ * Usuwa poprzednie bąble z DOM, aby nie kumulowały się między zakładkami.
+ * Czyści:
+ *  - <svg id="bubbles"> lub dowolne pierwsze <svg>
+ *  - <canvas id="bubbles-canvas"> (jeśli używasz canvasa)
+ *  - element kontenera #bubbles (usuwa dzieci)
+ */
+function clearBubbles() {
+  // 1) dedykowane SVG z id
+  let svg = document.querySelector('svg#bubbles');
+  if (!svg) svg = document.querySelector('svg');
+  if (svg) while (svg.firstChild) svg.removeChild(svg.firstChild);
+
+  // 2) ewentualny canvas
+  const canvas = document.getElementById('bubbles-canvas') || document.querySelector('canvas#bubbles');
+  if (canvas && canvas.getContext) {
+    const ctx = canvas.getContext('2d');
+    if (ctx && canvas.width && canvas.height) ctx.clearRect(0, 0, canvas.width, canvas.height);
+  }
+
+  // 3) kontener DIV (jeśli renderujesz do divów)
+  const container = document.getElementById('bubbles') || document.querySelector('#bubbles');
+  if (container) container.innerHTML = '';
+}
