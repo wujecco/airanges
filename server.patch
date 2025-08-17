@@ -1,8 +1,8 @@
 diff --git a/server.js b/server.js
-index fed7cd319649e7c5e568a4fb815cc4ee63a8df3d..11c6c7bf6a08065c86c1dacc3f106aaff20ee5e6 100644
+index fed7cd319649e7c5e568a4fb815cc4ee63a8df3d..743a705e78150298ecd6b7bc0480ed9c7d1b72e3 100644
 --- a/server.js
 +++ b/server.js
-@@ -35,105 +35,132 @@ async function getTopTickers(limit) {
+@@ -35,105 +35,136 @@ async function getTopTickers(limit) {
      if (!seen.has(t)) { seen.add(t); out.push(t); }
    }
    if (!out.length) throw new Error('No S&P500 tickers scraped');
@@ -47,7 +47,8 @@ index fed7cd319649e7c5e568a4fb815cc4ee63a8df3d..11c6c7bf6a08065c86c1dacc3f106aaf
 +    const j = await r.json();
 +    const arr = Array.isArray(j.intervals) ? j.intervals : [];
 +    const last = arr.length ? arr[arr.length - 1] : null;
-+    return last && typeof last.close === 'number' ? last.close : null;
++    const price = Number(last && last.close);
++    return Number.isFinite(price) ? price : null;
 +  } catch {
 +    return null;
 +  }
@@ -72,16 +73,18 @@ index fed7cd319649e7c5e568a4fb815cc4ee63a8df3d..11c6c7bf6a08065c86c1dacc3f106aaf
 +    if (!arr.length) return { ticker, price: null, changePercent: null };
 +    const last = arr[arr.length - 1];
 +    const prev = arr.length > 5 ? arr[arr.length - 6] : arr[0];
-+    const price = typeof last.close === 'number' ? last.close : null;
++    const price = Number(last && last.close);
++    const prevClose = Number(prev && prev.close);
      let changePercent = null;
 -    for (let i = arr.length-1; i >= 0; i--) {
 -      const v = arr[i];
 -      if (v && typeof v.change === 'number' && isFinite(v.change)) { changePercent = v.change * 100; break; }
-+    if (price !== null && prev && typeof prev.close === 'number' && prev.close) {
-+      changePercent = ((price - prev.close) / prev.close) * 100;
++    if (Number.isFinite(price) && Number.isFinite(prevClose) && prevClose) {
++      changePercent = ((price - prevClose) / prevClose) * 100;
      }
-     return { ticker, price, changePercent };
+-    return { ticker, price, changePercent };
 -  } catch { return { ticker, price: null, changePercent: null }; }
++    return { ticker, price: Number.isFinite(price) ? price : null, changePercent };
 +  } catch {
 +    return { ticker, price: null, changePercent: null };
 +  }
@@ -92,7 +95,8 @@ index fed7cd319649e7c5e568a4fb815cc4ee63a8df3d..11c6c7bf6a08065c86c1dacc3f106aaf
 +// Porównanie bieżącej ceny z zamknięciem sprzed n sesji
 +async function changeFromEodToLatest(ticker, idx, apiKey) {
    try {
-+    const price = await latestPrice15m(ticker, apiKey);
++    const priceRaw = await latestPrice15m(ticker, apiKey);
++    const price = Number.isFinite(priceRaw) ? priceRaw : null;
 +    if (price === null) return { ticker, price: null, changePercent: null };
      const hist = await fetchEodHistory(ticker, idx, apiKey);
 -    if (!hist.length) return { ticker, price: null, changePercent: null };
@@ -100,10 +104,12 @@ index fed7cd319649e7c5e568a4fb815cc4ee63a8df3d..11c6c7bf6a08065c86c1dacc3f106aaf
 +    if (!hist.length) return { ticker, price, changePercent: null };
      const prev = hist.length > idx ? hist[idx] : hist[hist.length - 1];
 -    const price = (latest && typeof latest.close === 'number') ? latest.close : null;
++    const prevClose = Number(prev && prev.close);
      let changePercent = null;
 -    if (prev && typeof prev.close === 'number' && prev.close && typeof price === 'number') {
-+    if (prev && typeof prev.close === 'number' && prev.close) {
-       changePercent = ((price - prev.close) / prev.close) * 100;
+-      changePercent = ((price - prev.close) / prev.close) * 100;
++    if (Number.isFinite(prevClose) && prevClose) {
++      changePercent = ((price - prevClose) / prevClose) * 100;
      }
      return { ticker, price, changePercent };
 -  } catch { return { ticker, price: null, changePercent: null }; }
@@ -154,4 +160,3 @@ index fed7cd319649e7c5e568a4fb815cc4ee63a8df3d..11c6c7bf6a08065c86c1dacc3f106aaf
  app.get('*', (_req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
  
  app.listen(PORT, () => console.log(`[airanges] listening on :${PORT}`));
- 

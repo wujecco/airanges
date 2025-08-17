@@ -1,0 +1,57 @@
+diff --git a/public/js/bubbles.js b/public/js/bubbles.js
+index 8263461ad53374ed1e5a826775fb763a142b1973..1f85b0f8ae3aeb8635e564ae3e949711faa2e9e4 100644
+--- a/public/js/bubbles.js
++++ b/public/js/bubbles.js
+@@ -238,51 +238,51 @@
+     }
+ 
+     // Populate the bubbles array.
+     // In the stock mode we defer populating the bubbles until after
+     // fetching data from the server. The `loadStockData` function will
+     // build bubbles based on the downloaded data. If fetching fails,
+     // this fallback block will be used to populate with random values.
+     function populateFallback() {
+       for (let i = 0; i < numBubbles; i++) {
+         bubbles.push(createBubble());
+       }
+     }
+ 
+     /**
+      * Fetch the S&P 500 constituents and their realtime prices from our
+      * server. The server proxies the Intrinio API and reads the API
+      * key from an environment variable so the key remains secret. On
+      * success, this will assign `stockData` and update `numBubbles` to
+      * the length of the returned array. Then it will create bubbles
+      * using each stock entry. If the fetch fails (e.g. due to
+      * network/authorization errors), it will fall back to creating
+      * random bubbles.
+      */
+     async function loadStockData(range = 'day') {
+       try {
+-        const response = await fetch(`/api/sp500?range=${range}/api/sp500?range=${range}limit=10`);
++        const response = await fetch(`/api/sp500?range=${range}&limit=10`);
+         if (!response.ok) {
+           throw new Error('Failed to fetch SP500 data');
+         }
+         const data = await response.json();
+         // Use the returned array of {ticker, price} objects.
+         stockData = Array.isArray(data) ? data : null;
+         if (stockData && stockData.length > 0) {
+           numBubbles = stockData.length;
+           // Compute the maximum absolute change once so sizes are scaled
+           // proportionally. Avoid division by zero by defaulting to 1 if all
+           // values are zero or undefined.
+           let maxVal = 0;
+           for (const s of stockData) {
+             const cp = Math.abs(s.changePercent || 0);
+             if (cp > maxVal) maxVal = cp;
+           }
+           maxAbsChange = maxVal > 0 ? maxVal : 1;
+           for (let i = 0; i < numBubbles; i++) {
+             bubbles.push(createBubble(stockData[i]));
+           }
+         } else {
+           // Fallback to random bubbles if data is empty.
+           populateFallback();
+         }
+       } catch (err) {
