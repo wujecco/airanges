@@ -57,44 +57,71 @@ async function fetchEodHistory(ticker, needed, apiKey) {
   return all;
 }
 
-// Hour: ostatnia dostępna zmiana z 15m barów (okno 60 min)
-async function hourlyFrom15m(ticker, apiKey) {
+// Pobranie ostatniej ceny z 15‑minutowych interwałów (okno 6h)
+async function latestPrice15m(ticker, apiKey) {
   try {
-    const end = new Date(), start = new Date(end.getTime() - 60*60*1000);
+    const end = new Date();
+    const start = new Date(end.getTime() - 6 * 60 * 60 * 1000);
     const s = nyFormat(start), e = nyFormat(end);
     const url = `https://api-v2.intrinio.com/securities/${encodeURIComponent(ticker)}/prices/intervals` +
       `?interval_size=15m&source=delayed&timezone=America/New_York` +
       `&start_date=${s.date}&start_time=${s.time}&end_date=${e.date}&end_time=${e.time}` +
-      `&split_adjusted=false&include_quote_only_bars=false&page_size=10&api_key=${apiKey}`;
+      `&split_adjusted=false&include_quote_only_bars=false&page_size=100&api_key=${apiKey}`;
+    const r = await fetch(url);
+    if (!r.ok) return null;
+    const j = await r.json();
+    const arr = Array.isArray(j.intervals) ? j.intervals : [];
+    const last = arr.length ? arr[arr.length - 1] : null;
+    return last && typeof last.close === 'number' ? last.close : null;
+  } catch {
+    return null;
+  }
+}
+
+// Zmiana godzinowa na podstawie 15‑minutowych barów (5 kwartałów wstecz)
+async function hourlyChangeFrom15m(ticker, apiKey) {
+  try {
+    const end = new Date();
+    const start = new Date(end.getTime() - 2 * 60 * 60 * 1000); // okno 2h
+    const s = nyFormat(start), e = nyFormat(end);
+    const url = `https://api-v2.intrinio.com/securities/${encodeURIComponent(ticker)}/prices/intervals` +
+      `?interval_size=15m&source=delayed&timezone=America/New_York` +
+      `&start_date=${s.date}&start_time=${s.time}&end_date=${e.date}&end_time=${e.time}` +
+      `&split_adjusted=false&include_quote_only_bars=false&page_size=100&api_key=${apiKey}`;
     const r = await fetch(url);
     if (!r.ok) return { ticker, price: null, changePercent: null };
     const j = await r.json();
     const arr = Array.isArray(j.intervals) ? j.intervals : [];
-    const last = arr.length ? arr[arr.length-1] : null;
-    const price = last && typeof last.close === 'number' ? last.close : null;
+    if (!arr.length) return { ticker, price: null, changePercent: null };
+    const last = arr[arr.length - 1];
+    const prev = arr.length > 5 ? arr[arr.length - 6] : arr[0];
+    const price = typeof last.close === 'number' ? last.close : null;
     let changePercent = null;
-    for (let i = arr.length-1; i >= 0; i--) {
-      const v = arr[i];
-      if (v && typeof v.change === 'number' && isFinite(v.change)) { changePercent = v.change * 100; break; }
-    }
-    return { ticker, price, changePercent };
-  } catch { return { ticker, price: null, changePercent: null }; }
-}
-
-// EOD: porównanie do 1/5/21/252 sesji wstecz (z historią stronicowaną)
-async function eodChangeByIndex(ticker, idx, apiKey) {
-  try {
-    const hist = await fetchEodHistory(ticker, idx, apiKey);
-    if (!hist.length) return { ticker, price: null, changePercent: null };
-    const latest = hist[0];
-    const prev = hist.length > idx ? hist[idx] : hist[hist.length - 1];
-    const price = (latest && typeof latest.close === 'number') ? latest.close : null;
-    let changePercent = null;
-    if (prev && typeof prev.close === 'number' && prev.close && typeof price === 'number') {
+    if (price !== null && prev && typeof prev.close === 'number' && prev.close) {
       changePercent = ((price - prev.close) / prev.close) * 100;
     }
     return { ticker, price, changePercent };
-  } catch { return { ticker, price: null, changePercent: null }; }
+  } catch {
+    return { ticker, price: null, changePercent: null };
+  }
+}
+
+// Porównanie bieżącej ceny z zamknięciem sprzed n sesji
+async function changeFromEodToLatest(ticker, idx, apiKey) {
+  try {
+    const price = await latestPrice15m(ticker, apiKey);
+    if (price === null) return { ticker, price: null, changePercent: null };
+    const hist = await fetchEodHistory(ticker, idx, apiKey);
+    if (!hist.length) return { ticker, price, changePercent: null };
+    const prev = hist.length > idx ? hist[idx] : hist[hist.length - 1];
+    let changePercent = null;
+    if (prev && typeof prev.close === 'number' && prev.close) {
+      changePercent = ((price - prev.close) / prev.close) * 100;
+    }
+    return { ticker, price, changePercent };
+  } catch {
+    return { ticker, price: null, changePercent: null };
+  }
 }
 
 // ===== API =====
@@ -115,13 +142,13 @@ app.get('/api/sp500', async (req, res) => {
     if (range === 'hour') {
       for (let i = 0; i < tickers.length; i += CONCURRENCY) {
         // eslint-disable-next-line no-await-in-loop
-        out.push(...await Promise.all(tickers.slice(i, i + CONCURRENCY).map(t => hourlyFrom15m(t, apiKey))));
+        out.push(...await Promise.all(tickers.slice(i, i + CONCURRENCY).map(t => hourlyChangeFrom15m(t, apiKey))));
       }
     } else {
       const idx = compareMap[range] ?? 1;
       for (let i = 0; i < tickers.length; i += CONCURRENCY) {
         // eslint-disable-next-line no-await-in-loop
-        out.push(...await Promise.all(tickers.slice(i, i + CONCURRENCY).map(t => eodChangeByIndex(t, idx, apiKey))));
+        out.push(...await Promise.all(tickers.slice(i, i + CONCURRENCY).map(t => changeFromEodToLatest(t, idx, apiKey))));
       }
     }
 
