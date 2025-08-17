@@ -1,0 +1,47 @@
+cat > server-limit-10.patch <<'PATCH'
+diff --git a/server.js b/server.js
+--- a/server.js
++++ b/server.js
+@@
+ app.get('/api/sp500', async (req, res) => {
+-  const apiKey = process.env.INTRINIO_API_KEY;
++  const apiKey = process.env.INTRINIO_API_KEY;
+   if (!apiKey) return res.status(500).json({ error: 'INTRINIO_API_KEY missing' });
+-  const range = (req.query.range || 'day').toLowerCase();
++  const range = (req.query.range || 'day').toLowerCase();
++  const limitParam = parseInt(req.query.limit, 10);
++  const LIMIT = Math.max(1, Math.min(100, Number.isFinite(limitParam) ? limitParam : 10));
++  const CONCURRENCY = Math.min(LIMIT, 10);
+@@
+-    const tickers = await getTopTickers();
++    // pobierz dokładnie LIMIT tickerów
++    const tickers = (await getTopTickers()).slice(0, LIMIT);
+@@
+-    if (mode === 'hour') {
+-      for (let i = 0; i < tickers.length; i += CHUNK) {
++    if (mode === 'hour') {
++      for (let i = 0; i < tickers.length; i += CONCURRENCY) {
+         const part = tickers.slice(i, i + CHUNK).map(t => hourlyFrom15m(t, apiKey));
+         // eslint-disable-next-line no-await-in-loop
+         const got = await Promise.all(part);
+         jobs.push(...got);
+       }
+     } else {
+       const idx = compareMap[range] ?? 1;
+-      for (let i = 0; i < tickers.length; i += CHUNK) {
++      for (let i = 0; i < tickers.length; i += CONCURRENCY) {
+         const part = tickers.slice(i, i + CHUNK).map(t => eodChangeByIndex(t, idx, apiKey));
+         // eslint-disable-next-line no-await-in-loop
+         const got = await Promise.all(part);
+         jobs.push(...got);
+       }
+     }
+-    res.json(jobs);
++    // zabezpieczenie: nawet jeśli coś wróci ponad limit, przytnij
++    res.json(jobs.filter(x => x && x.ticker).slice(0, LIMIT));
+   } catch (e) {
+     console.error(e);
+     res.status(500).json({ error: e.message || 'Failed to build S&P500 data' });
+   }
+ });
+PATCH

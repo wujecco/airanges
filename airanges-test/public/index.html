@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Buble One</title>
+  <style>
+    body {
+      margin: 0;
+      background: #0d0f23;
+      font-family: Arial, sans-serif;
+      /* Use flexbox so the header tabs and bubble container stack vertically
+         and the container can fill the remaining height. */
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+      overflow: hidden;
+    }
+
+    /* Top‑level tab row for selecting the asset class (stocks or crypto). */
+    #primary-tabs {
+      display: flex;
+      background: #111430;
+      color: #ffffff;
+      /* Ensure the tabs don't shrink below their content. */
+      flex-shrink: 0;
+      border-bottom: 1px solid #272a4d;
+    }
+    #primary-tabs {
+      gap: 6px;
+      padding: 6px;
+    }
+    #primary-tabs .tab {
+      flex: 1;
+      padding: 10px 14px;
+      text-align: center;
+      cursor: pointer;
+      background: #1d2336;
+      border: 1px solid #2f334d;
+      border-radius: 4px;
+      outline: none;
+      font-size: 16px;
+      color: #b0b4d1;
+      transition: color 0.2s, border-color 0.2s, background-color 0.2s, box-shadow 0.2s;
+    }
+    #primary-tabs .tab:hover {
+      color: #ffffff;
+      background-color: #252b40;
+    }
+    #primary-tabs .tab.active {
+      color: #ffffff;
+      font-weight: bold;
+      border-color: #32cd32;
+      background-color: #1f2738;
+      box-shadow: 0 0 6px rgba(50, 205, 50, 0.4);
+    }
+
+    /* Second‑level tab row for selecting the time range. */
+    #secondary-tabs {
+      display: flex;
+      background: #161a40;
+      color: #ccccdd;
+      flex-shrink: 0;
+      border-bottom: 1px solid #272a4d;
+    }
+    #secondary-tabs {
+      gap: 4px;
+      padding: 4px 6px;
+    }
+    #secondary-tabs .sub-tab {
+      flex: 1;
+      padding: 6px 10px;
+      text-align: center;
+      cursor: pointer;
+      background: #1d2336;
+      border: 1px solid #2f334d;
+      border-radius: 4px;
+      outline: none;
+      font-size: 14px;
+      color: #888caa;
+      transition: color 0.2s, border-color 0.2s, background-color 0.2s, box-shadow 0.2s;
+    }
+    #secondary-tabs .sub-tab:hover {
+      color: #ffffff;
+      background-color: #252b40;
+    }
+    #secondary-tabs .sub-tab.active {
+      color: #ffffff;
+      font-weight: bold;
+      border-color: #32cd32;
+      background-color: #1f2738;
+      box-shadow: 0 0 4px rgba(50, 205, 50, 0.4);
+    }
+    #bubble-container {
+      position: relative;
+      width: 100%;
+      /* Use flex-grow to fill the remaining height of the viewport beneath
+         the tab rows. Height will adjust automatically. */
+      flex: 1;
+      overflow: hidden;
+      /* Disable default touch gestures so pointer events are delivered to the
+         JavaScript handlers. Without this, some browsers (e.g. Safari on iOS)
+         may interpret touches as scroll/pinch and not dispatch pointer events. */
+      touch-action: none;
+    }
+    .bubble {
+      position: absolute;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: white;
+      font-weight: bold;
+      text-align: center;
+      text-shadow: 0 0 4px rgba(0, 0, 0, 0.6);
+      /* Allow pointer interaction so bubbles can be dragged */
+      pointer-events: auto;
+      user-select: none;
+      cursor: grab;
+    }
+    /* Change cursor while actively dragging */
+    .bubble.dragging {
+      cursor: grabbing;
+    }
+  </style>
+</head>
+<body>
+  <!-- Primary tab row: select between Stocks and Crypto -->
+  <div id="primary-tabs">
+    <button class="tab active" data-tab="stocks">AI Stocks</button>
+    <button class="tab" data-tab="crypto">AI Crypto</button>
+  </div>
+  <!-- Secondary tab row: select the time range. Not functional yet. -->
+  <div id="secondary-tabs">
+    <button class="sub-tab" data-range="hour">Hour</button>
+    <button class="sub-tab active" data-range="day">Day</button>
+    <button class="sub-tab" data-range="week">Week</button>
+    <button class="sub-tab" data-range="month">Month</button>
+    <button class="sub-tab" data-range="year">Year</button>
+  </div>
+  <!-- Bubble container fills the remaining vertical space. -->
+  <div id="bubble-container"></div>
+  <script src="js/bubbles.js"></script>
+</body>
+</html>
