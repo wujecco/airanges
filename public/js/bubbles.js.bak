@@ -260,7 +260,7 @@
      */
     async function loadStockData(range = 'day') {
       try {
-        const response = await fetch(`/api/sp500?range=${range}`);
+        const response = await fetch(`/api/sp500?range=${range}/api/sp500?range=${range}limit=10`);
         if (!response.ok) {
           throw new Error('Failed to fetch SP500 data');
         }
