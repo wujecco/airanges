@@ -1,6 +1,0 @@
-diff --git a/public/js/bubbles.js b/public/js/bubbles.js
---- a/public/js/bubbles.js
-+++ b/public/js/bubbles.js
-@@
--  const resp = await fetch(`/api/sp500?range=${encodeURIComponent(range)}`);
-+  const resp = await fetch(`/api/sp500?range=${encodeURIComponent(range)}&limit=10`);
